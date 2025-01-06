@@ -13,8 +13,8 @@
     "format": "prettier --write src/**/*.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/base": "^0.5.0",
-    "@modelcontextprotocol/types": "^0.5.0",
+    "@modelcontextprotocol/base": "modelcontextprotocol/base#main",
+    "@modelcontextprotocol/types": "modelcontextprotocol/types#main",
     "jira-client": "^8.2.2",
     "date-fns": "^2.30.0",
     "lodash": "^4.17.21"
