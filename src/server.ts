@@ -1,10 +1,5 @@
-import {
-  BaseServer,
-  Tool,
-  Resource,
-  ResourceTemplate
-} from '@modelcontextprotocol/base';
-import { ToolError } from '@modelcontextprotocol/types';
+import { BaseServer } from '@modelcontextprotocol/base';
+import { Tool, Resource, ResourceTemplate, ToolError } from '@modelcontextprotocol/types';
 import JiraApi from 'jira-client';
 import { JiraConfig, SprintPlanningInput } from './types';
 
