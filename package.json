@@ -1,5 +1,5 @@
 {
-  "name": "@modelcontextprotocol/server-jira",
+  "name": "mcp-jira-server",
   "version": "1.0.0",
   "description": "JIRA integration server for Model Context Protocol - enables LLMs to interact with JIRA tasks and workflows",
   "main": "dist/index.js",
