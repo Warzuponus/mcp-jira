@@ -13,8 +13,7 @@
     "format": "prettier --write src/**/*.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/base": "https://github.com/modelcontextprotocol/base.git#main",
-    "@modelcontextprotocol/types": "https://github.com/modelcontextprotocol/types.git#main",
+    "@modelcontextprotocol/typescript-sdk": "https://github.com/modelcontextprotocol/typescript-sdk.git#main",
     "jira-client": "^8.2.2",
     "date-fns": "^2.30.0",
     "lodash": "^4.17.21"
