@@ -1,5 +1,4 @@
-import { BaseServer } from '@modelcontextprotocol/base';
-import { Tool, Resource, ResourceTemplate, ToolError } from '@modelcontextprotocol/types';
+import { BaseServer, Tool, Resource, ResourceTemplate, ToolError } from '@modelcontextprotocol/typescript-sdk';
 import JiraApi from 'jira-client';
 import { JiraConfig, SprintPlanningInput } from './types';
 
@@ -61,7 +60,7 @@ export class JiraMCPServer extends BaseServer {
         fields: ['summary', 'status', 'priority', 'assignee', 'duedate', 'customfield_10016']
       });
 
-      const boards = await this.jira.getAllBoards(projectKey);
+      const boards = await this.jira.getAllBoards({ projectKeyOrId: projectKey });
       const activeSprints = [];
       for (const board of boards.values) {
         const sprints = await this.jira.getAllSprints(board.id);
@@ -114,7 +113,7 @@ export class JiraMCPServer extends BaseServer {
     }
   }
 
-  // Add other methods here...
+  // Add other methods...
   private async getProjectResource(params: ResourceTemplate.Parameters): Promise<Resource> {
     const projectKey = params.get('projectKey');
     if (!projectKey) {
