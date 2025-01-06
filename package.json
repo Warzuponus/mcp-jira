@@ -1,7 +1,7 @@
 {
   "name": "@modelcontextprotocol/server-jira",
   "version": "1.0.0",
-  "description": "JIRA integration server for Model Context Protocol",
+  "description": "JIRA integration server for Model Context Protocol - enables LLMs to interact with JIRA tasks and workflows",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -14,10 +14,14 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "jira-client": "^8.2.2"
+    "jira-client": "^8.2.2",
+    "date-fns": "^2.30.0",
+    "lodash": "^4.17.21"
   },
   "devDependencies": {
     "@types/jest": "^29.0.0",
+    "@types/jira-client": "^7.1.6",
+    "@types/lodash": "^4.14.200",
     "@types/node": "^18.0.0",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
     "@typescript-eslint/parser": "^5.0.0",
@@ -33,7 +37,10 @@
     "jira",
     "modelcontextprotocol",
     "ai",
-    "llm"
+    "llm",
+    "project-management",
+    "agile",
+    "scrum"
   ],
   "author": "MCP JIRA Server Contributors",
   "license": "MIT",
