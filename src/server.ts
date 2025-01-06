@@ -2,9 +2,9 @@ import {
   BaseServer,
   Tool,
   Resource,
-  ResourceTemplate,
-  ToolError,
-} from '@modelcontextprotocol/sdk';
+  ResourceTemplate
+} from '@modelcontextprotocol/base';
+import { ToolError } from '@modelcontextprotocol/types';
 import JiraApi from 'jira-client';
 import { JiraConfig, SprintPlanningInput } from './types';
 
@@ -22,29 +22,35 @@ export class JiraMCPServer extends BaseServer {
       apiVersion: config.apiVersion,
     });
 
+    this.initializeTools();
+    this.initializeResources();
+  }
+
+  private initializeTools(): void {
     // Register project management tools
-    this.registerTool('getProjectOverview', this.getProjectOverview.bind(this));
-    this.registerTool('createSprint', this.createSprint.bind(this));
-    this.registerTool('planSprint', this.planSprint.bind(this));
-    this.registerTool('assignIssue', this.assignIssue.bind(this));
-    this.registerTool('updatePriority', this.updatePriority.bind(this));
-    this.registerTool('setDueDate', this.setDueDate.bind(this));
-    this.registerTool('createEpic', this.createEpic.bind(this));
-    this.registerTool('analyzeProjectMetrics', this.analyzeProjectMetrics.bind(this));
+    this.tools.set('getProjectOverview', this.getProjectOverview.bind(this));
+    this.tools.set('createSprint', this.createSprint.bind(this));
+    this.tools.set('planSprint', this.planSprint.bind(this));
+    this.tools.set('assignIssue', this.assignIssue.bind(this));
+    this.tools.set('updatePriority', this.updatePriority.bind(this));
+    this.tools.set('setDueDate', this.setDueDate.bind(this));
+    this.tools.set('createEpic', this.createEpic.bind(this));
+    this.tools.set('analyzeProjectMetrics', this.analyzeProjectMetrics.bind(this));
     
     // Register basic issue management tools
-    this.registerTool('createIssue', this.createIssue.bind(this));
-    this.registerTool('updateIssue', this.updateIssue.bind(this));
-    this.registerTool('searchIssues', this.searchIssues.bind(this));
-    
+    this.tools.set('createIssue', this.createIssue.bind(this));
+    this.tools.set('updateIssue', this.updateIssue.bind(this));
+    this.tools.set('searchIssues', this.searchIssues.bind(this));
+  }
+
+  private initializeResources(): void {
     // Register resource templates
-    this.registerResourceTemplate('project', this.getProjectResource.bind(this));
-    this.registerResourceTemplate('sprint', this.getSprintResource.bind(this));
-    this.registerResourceTemplate('issue', this.getIssueResource.bind(this));
+    this.resourceTemplates.set('project', this.getProjectResource.bind(this));
+    this.resourceTemplates.set('sprint', this.getSprintResource.bind(this));
+    this.resourceTemplates.set('issue', this.getIssueResource.bind(this));
   }
 
   async start(): Promise<void> {
-    // Initialize any necessary resources
     console.log('MCP JIRA Server started');
   }
 
@@ -106,11 +112,38 @@ export class JiraMCPServer extends BaseServer {
         })
       };
     } catch (error) {
-      throw new ToolError('Failed to get project overview', { cause: error });
+      if (error instanceof Error) {
+        throw new ToolError('Failed to get project overview: ' + error.message);
+      }
+      throw new ToolError('Failed to get project overview');
     }
   }
 
-  // Add remaining methods here...
+  // Add other methods here...
+  private async getProjectResource(params: ResourceTemplate.Parameters): Promise<Resource> {
+    const projectKey = params.get('projectKey');
+    if (!projectKey) {
+      throw new Error('Project key is required');
+    }
+
+    try {
+      if (!this.projectCache.has(projectKey)) {
+        const project = await this.jira.getProject(projectKey);
+        this.projectCache.set(projectKey, project);
+      }
+
+      return {
+        uri: `jira://project/${projectKey}`,
+        type: 'application/json',
+        content: JSON.stringify(this.projectCache.get(projectKey))
+      };
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to get project: ${error.message}`);
+      }
+      throw new Error('Failed to get project');
+    }
+  }
 }
 
 export function createServer(config: JiraConfig): JiraMCPServer {
