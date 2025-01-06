@@ -1,13 +1,12 @@
 import { createServer } from './server';
-
-export { JiraMCPServer, createServer } from './server';
+import { JiraConfig } from './types';
 
 // Read configuration from environment variables
-const config = {
+const config: JiraConfig = {
   protocol: process.env.JIRA_PROTOCOL || 'https',
-  host: process.env.JIRA_HOST,
-  username: process.env.JIRA_USERNAME,
-  password: process.env.JIRA_API_TOKEN,
+  host: process.env.JIRA_HOST || '',
+  username: process.env.JIRA_USERNAME || '',
+  password: process.env.JIRA_API_TOKEN || '',
   apiVersion: process.env.JIRA_API_VERSION || '2'
 };
 
@@ -16,3 +15,5 @@ if (require.main === module) {
   const server = createServer(config);
   server.start();
 }
+
+export { JiraConfig, createServer };
