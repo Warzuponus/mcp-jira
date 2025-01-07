@@ -1,5 +1,4 @@
-import { BaseServer } from '@modelcontextprotocol/typescript-sdk/dist/server/base';
-import { Tool } from '@modelcontextprotocol/typescript-sdk/dist/server/tool';
+import { BaseServer, Tool, ServerResponse } from '@modelcontextprotocol/typescript-sdk';
 import JiraApi from 'jira-client';
 import { JiraConfig, JiraIssue, JiraBoards } from './types';
 import { toolSchemas } from './schemas';
@@ -27,7 +26,7 @@ export class JiraServer extends BaseServer {
     }));
   }
 
-  async executeTool(name: string, args: Record<string, any>): Promise<Tool.Response> {
+  async executeTool(name: string, args: Record<string, any>): Promise<ServerResponse> {
     try {
       switch (name) {
         case 'jql_search':
@@ -49,7 +48,7 @@ export class JiraServer extends BaseServer {
     }
   }
 
-  private async jqlSearch(args: any): Promise<Tool.Response> {
+  private async jqlSearch(args: any): Promise<ServerResponse> {
     const { jql, nextPageToken, maxResults, fields, expand } = args;
     
     const results = await this.jira.searchJira(jql, {
@@ -65,7 +64,7 @@ export class JiraServer extends BaseServer {
     };
   }
 
-  private async getIssue(args: any): Promise<Tool.Response> {
+  private async getIssue(args: any): Promise<ServerResponse> {
     const { issueIdOrKey } = args;
     const issue = await this.jira.findIssue(issueIdOrKey);
 
@@ -75,7 +74,7 @@ export class JiraServer extends BaseServer {
     };
   }
 
-  private async createIssue(args: any): Promise<Tool.Response> {
+  private async createIssue(args: any): Promise<ServerResponse> {
     const { project, summary, description, issueType, priority, assignee, labels, storyPoints, epic } = args;
     
     const issueData: any = {
@@ -103,7 +102,7 @@ export class JiraServer extends BaseServer {
     };
   }
 
-  private async planSprint(args: any): Promise<Tool.Response> {
+  private async planSprint(args: any): Promise<ServerResponse> {
     const { projectKey, sprintName, sprintGoal, startDate, endDate, teamCapacity } = args;
 
     // Get backlog issues
