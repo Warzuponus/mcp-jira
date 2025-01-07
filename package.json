@@ -10,7 +10,7 @@
     "dev": "ts-node src/index.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/typescript-sdk": "modelcontextprotocol/typescript-sdk#main",
+    "@modelcontextprotocol/typescript-sdk": "file:../modelcontextprotocol/typescript-sdk",
     "jira-client": "^8.2.2"
   },
   "devDependencies": {
