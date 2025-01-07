@@ -23,7 +23,7 @@
     "jira-client": "^8.2.2"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "github:modelcontextprotocol/typescript-sdk",
+    "@modelcontextprotocol/sdk": "modelcontextprotocol/typescript-sdk#main",
     "@types/jest": "^29.0.0",
     "@types/jira-client": "^7.1.6",
     "@types/node": "^18.0.0",
