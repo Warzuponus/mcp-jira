@@ -1,4 +1,5 @@
-import { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/typescript-sdk';
+#!/usr/bin/env node
+import { Server, StdioServerTransport } from '@modelcontextprotocol/sdk';
 import { JiraServer } from './server';
 
 // Validate environment variables
@@ -33,24 +34,18 @@ const jiraServer = new JiraServer({
   apiKey: JIRA_API_KEY
 });
 
-// Register tools from our implementation
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: jiraServer.getTools()
-}));
-
-// Handle tool execution
-server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name: string; arguments: any } }) => {
-  const { name, arguments: args } = request.params;
-  return await jiraServer.executeTool(name, args);
-});
-
-// Start the server
+// Register tools and start server
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  
+  // Register server capabilities
+  server.setTools(jiraServer.getTools());
+  
   console.log('JIRA MCP Server is running.');
 }
 
 main().catch((error) => {
   console.error('Error starting the server:', error);
+  process.exit(1);
 });
