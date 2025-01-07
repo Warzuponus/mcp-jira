@@ -1,16 +1,25 @@
 {
-  "name": "mcp-jira-server",
+  "name": "@modelcontextprotocol/server-jira",
   "version": "1.0.0",
   "description": "JIRA integration server for Model Context Protocol",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
+  "bin": {
+    "mcp-jira": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts"
+    "dev": "ts-node src/index.ts",
+    "prepare": "npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/typescript-sdk": "npm:@modelcontextprotocol/sdk@latest",
+    "@modelcontextprotocol/sdk": "^0.5.0",
     "jira-client": "^8.2.2"
   },
   "devDependencies": {
@@ -18,5 +27,25 @@
     "@types/node": "^18.0.0",
     "typescript": "^4.9.0",
     "ts-node": "^10.9.1"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "jira",
+    "modelcontextprotocol",
+    "claude",
+    "anthropic"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Warzuponus/mcp-jira.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Warzuponus/mcp-jira/issues"
+  },
+  "homepage": "https://github.com/Warzuponus/mcp-jira#readme"
 }
