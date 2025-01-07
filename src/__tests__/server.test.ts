@@ -1,40 +1,41 @@
-import { JiraMCPServer } from '../server';
+import { JiraServer } from '../server';
 
-describe('JiraMCPServer', () => {
+describe('JiraServer', () => {
   const mockConfig = {
-    protocol: 'https',
-    host: 'test.atlassian.net',
-    username: 'test@example.com',
-    password: 'test-token',
-    apiVersion: '2'
+    instanceUrl: 'https://test.atlassian.net',
+    email: 'test@example.com',
+    apiKey: 'test-token'
   };
 
-  let server: JiraMCPServer;
+  let server: JiraServer;
 
   beforeEach(() => {
-    server = new JiraMCPServer(mockConfig);
+    server = new JiraServer(mockConfig);
   });
 
-  describe('createIssue', () => {
-    it('should create a new issue', async () => {
-      // Add test implementation
+  describe('getTools', () => {
+    it('should return list of available tools', () => {
+      const tools = server.getTools();
+      expect(tools.length).toBeGreaterThan(0);
+      expect(tools[0]).toHaveProperty('name');
+      expect(tools[0]).toHaveProperty('schema');
     });
   });
 
-  describe('updateIssue', () => {
-    it('should update an existing issue', async () => {
-      // Add test implementation
-    });
-  });
-
-  describe('searchIssues', () => {
+  describe('jqlSearch', () => {
     it('should search for issues using JQL', async () => {
       // Add test implementation
     });
   });
 
-  describe('getIssueResource', () => {
-    it('should return issue details as a resource', async () => {
+  describe('getIssue', () => {
+    it('should fetch issue details', async () => {
+      // Add test implementation
+    });
+  });
+
+  describe('createIssue', () => {
+    it('should create a new issue', async () => {
       // Add test implementation
     });
   });
