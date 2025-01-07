@@ -1,6 +1,7 @@
-import { BaseServer, Tool, ServerResponse } from '@modelcontextprotocol/typescript-sdk';
+import { BaseServer } from '@modelcontextprotocol/sdk';
+import type { Tool } from '@modelcontextprotocol/sdk';
 import JiraApi from 'jira-client';
-import { JiraConfig, JiraIssue, JiraBoards } from './types';
+import { JiraConfig } from './types';
 import { toolSchemas } from './schemas';
 
 export class JiraServer extends BaseServer {
@@ -18,15 +19,15 @@ export class JiraServer extends BaseServer {
     });
   }
 
-  getTools() {
+  getTools(): Tool[] {
     return Object.entries(toolSchemas).map(([name, schema]) => ({
       name,
       description: `Execute ${name} operation in JIRA`,
-      inputSchema: schema
+      schema
     }));
   }
 
-  async executeTool(name: string, args: Record<string, any>): Promise<ServerResponse> {
+  async executeTool(name: string, args: Record<string, unknown>): Promise<Tool.Response> {
     try {
       switch (name) {
         case 'jql_search':
@@ -48,8 +49,8 @@ export class JiraServer extends BaseServer {
     }
   }
 
-  private async jqlSearch(args: any): Promise<ServerResponse> {
-    const { jql, nextPageToken, maxResults, fields, expand } = args;
+  private async jqlSearch(args: Record<string, unknown>): Promise<Tool.Response> {
+    const { jql, nextPageToken, maxResults, fields, expand } = args as any;
     
     const results = await this.jira.searchJira(jql, {
       startAt: nextPageToken || 0,
@@ -64,8 +65,8 @@ export class JiraServer extends BaseServer {
     };
   }
 
-  private async getIssue(args: any): Promise<ServerResponse> {
-    const { issueIdOrKey } = args;
+  private async getIssue(args: Record<string, unknown>): Promise<Tool.Response> {
+    const { issueIdOrKey } = args as { issueIdOrKey: string };
     const issue = await this.jira.findIssue(issueIdOrKey);
 
     return {
@@ -74,8 +75,8 @@ export class JiraServer extends BaseServer {
     };
   }
 
-  private async createIssue(args: any): Promise<ServerResponse> {
-    const { project, summary, description, issueType, priority, assignee, labels, storyPoints, epic } = args;
+  private async createIssue(args: Record<string, unknown>): Promise<Tool.Response> {
+    const { project, summary, description, issueType, priority, assignee, labels, storyPoints, epic } = args as any;
     
     const issueData: any = {
       fields: {
@@ -102,8 +103,8 @@ export class JiraServer extends BaseServer {
     };
   }
 
-  private async planSprint(args: any): Promise<ServerResponse> {
-    const { projectKey, sprintName, sprintGoal, startDate, endDate, teamCapacity } = args;
+  private async planSprint(args: Record<string, unknown>): Promise<Tool.Response> {
+    const { projectKey, sprintName, sprintGoal, startDate, endDate, teamCapacity } = args as any;
 
     // Get backlog issues
     const backlogIssues = await this.jira.searchJira(
