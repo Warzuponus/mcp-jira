@@ -1,5 +1,5 @@
-import { BaseServer } from '@modelcontextprotocol/server/base';
-import { Tool } from '@modelcontextprotocol/server/tool';
+import { BaseServer } from '@modelcontextprotocol/typescript-sdk/dist/server/base';
+import { Tool } from '@modelcontextprotocol/typescript-sdk/dist/server/tool';
 import JiraApi from 'jira-client';
 import { JiraConfig, JiraIssue, JiraBoards } from './types';
 import { toolSchemas } from './schemas';
