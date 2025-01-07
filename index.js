@@ -2,6 +2,7 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
 // Retrieve environment variables
 const JIRA_INSTANCE_URL = process.env.JIRA_INSTANCE_URL;
@@ -30,7 +31,7 @@ const server = new Server(
 );
 
 // Define tools for backlog management
-server.setRequestHandler("listTools", async () => {
+server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
@@ -79,7 +80,7 @@ server.setRequestHandler("listTools", async () => {
 });
 
 // Handle tool execution
-server.setRequestHandler("callTool", async (request) => {
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
@@ -104,7 +105,7 @@ server.setRequestHandler("callTool", async (request) => {
 
         if (!response.ok) throw new Error(`JIRA API Error: ${response.statusText}`);
         const data = await response.json();
-        return { type: "text", content: JSON.stringify(data, null, 2) };
+        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
       }
 
       case "update_issue": {
@@ -129,7 +130,7 @@ server.setRequestHandler("callTool", async (request) => {
         );
 
         if (!response.ok) throw new Error(`JIRA API Error: ${response.statusText}`);
-        return { type: "text", content: `Updated issue ${args.issueKey}` };
+        return { content: [{ type: "text", text: `Updated issue ${args.issueKey}` }] };
       }
 
       case "create_issue": {
@@ -155,11 +156,14 @@ server.setRequestHandler("callTool", async (request) => {
 
         if (!response.ok) throw new Error(`JIRA API Error: ${response.statusText}`);
         const data = await response.json();
-        return { type: "text", content: `Created issue ${data.key}` };
+        return { content: [{ type: "text", text: `Created issue ${data.key}` }] };
       }
+
+      default:
+        throw new Error(`Unknown tool: ${name}`);
     }
   } catch (error) {
-    return { isError: true, content: error.message };
+    return { isError: true, content: [{ type: "text", text: error.message }] };
   }
 });
 
