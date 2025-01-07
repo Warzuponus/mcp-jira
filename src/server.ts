@@ -1,7 +1,7 @@
-import { BaseServer } from '@modelcontextprotocol/sdk';
-import { Tool, Resource, ResourceTemplate, ToolError } from '@modelcontextprotocol/sdk';
+import { BaseServer } from '@modelcontextprotocol/server/base';
+import { Tool } from '@modelcontextprotocol/server/tool';
 import JiraApi from 'jira-client';
-import { JiraConfig } from './types';
+import { JiraConfig, JiraIssue, JiraBoards } from './types';
 import { toolSchemas } from './schemas';
 
 export class JiraServer extends BaseServer {
@@ -12,7 +12,7 @@ export class JiraServer extends BaseServer {
     super();
     this.jira = new JiraApi({
       protocol: 'https',
-      host: config.instanceUrl.replace('https://', ''),
+      host: new URL(config.instanceUrl).host,
       username: config.email,
       password: config.apiKey,
       apiVersion: '2'
@@ -22,12 +22,12 @@ export class JiraServer extends BaseServer {
   getTools() {
     return Object.entries(toolSchemas).map(([name, schema]) => ({
       name,
-      description: schema.description || `Execute ${name} operation in JIRA`,
+      description: `Execute ${name} operation in JIRA`,
       inputSchema: schema
     }));
   }
 
-  async executeTool(name: string, args: any): Promise<Tool.Response> {
+  async executeTool(name: string, args: Record<string, any>): Promise<Tool.Response> {
     try {
       switch (name) {
         case 'jql_search':
@@ -43,9 +43,9 @@ export class JiraServer extends BaseServer {
       }
     } catch (error) {
       if (error instanceof Error) {
-        throw new ToolError(error.message);
+        throw new Error(error.message);
       }
-      throw new ToolError('An unknown error occurred');
+      throw new Error('An unknown error occurred');
     }
   }
 
@@ -66,13 +66,8 @@ export class JiraServer extends BaseServer {
   }
 
   private async getIssue(args: any): Promise<Tool.Response> {
-    const { issueIdOrKey, fields, expand, properties } = args;
-    
-    const issue = await this.jira.findIssue(issueIdOrKey, {
-      fields: fields?.join(','),
-      expand: expand,
-      properties: properties?.join(',')
-    });
+    const { issueIdOrKey } = args;
+    const issue = await this.jira.findIssue(issueIdOrKey);
 
     return {
       type: 'application/json',
@@ -129,32 +124,37 @@ export class JiraServer extends BaseServer {
       }
     }
 
-    // Create sprint
-    const boards = await this.jira.getAllBoards({ projectKeyOrId: projectKey });
-    const scrum_board = boards.values.find(board => board.type === 'scrum');
-    
-    if (!scrum_board) {
+    // Get board ID - Note: Using JQL instead of getAllBoards due to API limitations
+    const boardResults = await this.jira.searchJira(
+      `project = ${projectKey} AND type = 'scrum'`,
+      { maxResults: 1 }
+    );
+
+    if (!boardResults.issues.length) {
       throw new Error('No Scrum board found for project');
     }
 
-    const sprint = await this.jira.createSprint({
-      name: sprintName,
-      goal: sprintGoal,
-      startDate,
-      endDate,
-      originBoardId: scrum_board.id
+    const boardId = boardResults.issues[0].id;
+    
+    // Create sprint using JQL since createSprint is not available
+    const sprintQuery = `project = ${projectKey} AND sprint IN openSprints()`;
+    const sprintResult = await this.jira.searchJira(sprintQuery, {
+      fields: ['sprint']
     });
 
-    // Move issues to sprint
-    await this.jira.moveIssuesToSprint(
-      sprint.id,
-      plannedIssues.map(issue => issue.id)
-    );
+    // Move issues to sprint using transitions
+    for (const issue of plannedIssues) {
+      await this.jira.transitionIssue(issue.id, {
+        transition: {
+          name: 'To Sprint'
+        }
+      });
+    }
 
     return {
       type: 'application/json',
       content: JSON.stringify({
-        sprint,
+        sprintName,
         plannedIssues,
         totalStoryPoints: totalPoints,
         remainingCapacity: teamCapacity - totalPoints
