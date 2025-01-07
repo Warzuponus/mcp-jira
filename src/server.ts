@@ -1,168 +1,164 @@
-import { BaseServer, Tool, Resource, ResourceTemplate, ToolError } from '@modelcontextprotocol/sdk';
+import { BaseServer } from '@modelcontextprotocol/sdk';
+import { Tool, Resource, ResourceTemplate, ToolError } from '@modelcontextprotocol/sdk';
 import JiraApi from 'jira-client';
-import { JiraConfig, SprintPlanningInput } from './types';
+import { JiraConfig } from './types';
+import { toolSchemas } from './schemas';
 
-export class JiraMCPServer extends BaseServer {
-  protected readonly tools: Map<string, Tool> = new Map();
-  protected readonly resourceTemplates: Map<string, ResourceTemplate> = new Map();
+export class JiraServer extends BaseServer {
   private jira: JiraApi;
   private projectCache: Map<string, any> = new Map();
 
   constructor(config: JiraConfig) {
     super();
     this.jira = new JiraApi({
-      protocol: config.protocol,
-      host: config.host,
-      username: config.username,
-      password: config.password,
-      apiVersion: config.apiVersion,
+      protocol: 'https',
+      host: config.instanceUrl.replace('https://', ''),
+      username: config.email,
+      password: config.apiKey,
+      apiVersion: '2'
+    });
+  }
+
+  getTools() {
+    return Object.entries(toolSchemas).map(([name, schema]) => ({
+      name,
+      description: schema.description || `Execute ${name} operation in JIRA`,
+      inputSchema: schema
+    }));
+  }
+
+  async executeTool(name: string, args: any): Promise<Tool.Response> {
+    try {
+      switch (name) {
+        case 'jql_search':
+          return await this.jqlSearch(args);
+        case 'get_issue':
+          return await this.getIssue(args);
+        case 'create_issue':
+          return await this.createIssue(args);
+        case 'plan_sprint':
+          return await this.planSprint(args);
+        default:
+          throw new Error(`Unknown tool: ${name}`);
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new ToolError(error.message);
+      }
+      throw new ToolError('An unknown error occurred');
+    }
+  }
+
+  private async jqlSearch(args: any): Promise<Tool.Response> {
+    const { jql, nextPageToken, maxResults, fields, expand } = args;
+    
+    const results = await this.jira.searchJira(jql, {
+      startAt: nextPageToken || 0,
+      maxResults: maxResults || 50,
+      fields: fields || ['*navigable'],
+      expand: expand || ''
     });
 
-    this.initializeTools();
-    this.initializeResources();
+    return {
+      type: 'application/json',
+      content: JSON.stringify(results, null, 2)
+    };
   }
 
-  private initializeTools(): void {
-    // Register project management tools
-    this.tools.set('getProjectOverview', this.getProjectOverview.bind(this));
-    this.tools.set('createSprint', this.createSprint.bind(this));
-    this.tools.set('planSprint', this.planSprint.bind(this));
-    this.tools.set('assignIssue', this.assignIssue.bind(this));
-    this.tools.set('updatePriority', this.updatePriority.bind(this));
-    this.tools.set('setDueDate', this.setDueDate.bind(this));
-    this.tools.set('createEpic', this.createEpic.bind(this));
-    this.tools.set('analyzeProjectMetrics', this.analyzeProjectMetrics.bind(this));
+  private async getIssue(args: any): Promise<Tool.Response> {
+    const { issueIdOrKey, fields, expand, properties } = args;
     
-    // Register basic issue management tools
-    this.tools.set('createIssue', this.createIssue.bind(this));
-    this.tools.set('updateIssue', this.updateIssue.bind(this));
-    this.tools.set('searchIssues', this.searchIssues.bind(this));
+    const issue = await this.jira.findIssue(issueIdOrKey, {
+      fields: fields?.join(','),
+      expand: expand,
+      properties: properties?.join(',')
+    });
+
+    return {
+      type: 'application/json',
+      content: JSON.stringify(issue, null, 2)
+    };
   }
 
-  private initializeResources(): void {
-    // Register resource templates
-    this.resourceTemplates.set('project', this.getProjectResource.bind(this));
-    this.resourceTemplates.set('sprint', this.getSprintResource.bind(this));
-    this.resourceTemplates.set('issue', this.getIssueResource.bind(this));
-  }
-
-  async start(): Promise<void> {
-    console.log('MCP JIRA Server started');
-  }
-
-  // Project Overview Tool
-  private async getProjectOverview(params: any): Promise<Tool.Response> {
-    try {
-      const { projectKey } = params;
-      
-      const project = await this.jira.getProject(projectKey);
-      
-      const issues = await this.jira.searchJira(`project = ${projectKey}`, {
-        maxResults: 1000,
-        fields: ['summary', 'status', 'priority', 'assignee', 'duedate', 'customfield_10016']
-      });
-
-      // Using the correct method signature for getAllBoards
-      const boards = await this.jira.getAllBoards(projectKey as number);
-      const activeSprints = [];
-      for (const board of boards.values) {
-        const sprints = await this.jira.getAllSprints(board.id);
-        activeSprints.push(...sprints.values.filter((sprint: any) => sprint.state === 'active'));
+  private async createIssue(args: any): Promise<Tool.Response> {
+    const { project, summary, description, issueType, priority, assignee, labels, storyPoints, epic } = args;
+    
+    const issueData: any = {
+      fields: {
+        project: { key: project },
+        summary,
+        description,
+        issuetype: { name: issueType },
+        priority: priority ? { name: priority } : undefined,
+        assignee: assignee ? { name: assignee } : undefined,
+        labels: labels || [],
+        customfield_10016: storyPoints
       }
+    };
 
-      const metrics: any = {
-        totalIssues: issues.total,
-        issuesByStatus: {},
-        issuesByPriority: {},
-        averageStoryPoints: 0,
-        backlogSize: 0
-      };
-
-      let totalStoryPoints = 0;
-      let issuesWithPoints = 0;
-
-      issues.issues.forEach((issue: any) => {
-        metrics.issuesByStatus[issue.fields.status.name] = 
-          (metrics.issuesByStatus[issue.fields.status.name] || 0) + 1;
-
-        metrics.issuesByPriority[issue.fields.priority.name] = 
-          (metrics.issuesByPriority[issue.fields.priority.name] || 0) + 1;
-
-        if (issue.fields.customfield_10016) {
-          totalStoryPoints += issue.fields.customfield_10016;
-          issuesWithPoints++;
-        }
-
-        if (issue.fields.status.statusCategory.key === 'new') {
-          metrics.backlogSize++;
-        }
-      });
-
-      metrics.averageStoryPoints = issuesWithPoints ? totalStoryPoints / issuesWithPoints : 0;
-
-      return {
-        type: 'application/json',
-        content: JSON.stringify({
-          project,
-          metrics,
-          activeSprints
-        })
-      };
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new ToolError('Failed to get project overview: ' + error.message);
-      }
-      throw new ToolError('Failed to get project overview');
-    }
-  }
-
-  // Declare other tool methods
-  private async createSprint(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-  private async planSprint(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-  private async assignIssue(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-  private async updatePriority(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-  private async setDueDate(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-  private async createEpic(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-  private async analyzeProjectMetrics(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-  private async createIssue(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-  private async updateIssue(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-  private async searchIssues(params: any): Promise<Tool.Response> { throw new Error('Not implemented'); }
-
-  // Resource handlers
-  private async getProjectResource(params: ResourceTemplate.Parameters): Promise<Resource> {
-    const projectKey = params.get('projectKey');
-    if (!projectKey) {
-      throw new Error('Project key is required');
+    if (epic) {
+      issueData.fields.customfield_10014 = epic;
     }
 
-    try {
-      if (!this.projectCache.has(projectKey)) {
-        const project = await this.jira.getProject(projectKey);
-        this.projectCache.set(projectKey, project);
-      }
+    const issue = await this.jira.addNewIssue(issueData);
 
-      return {
-        uri: `jira://project/${projectKey}`,
-        type: 'application/json',
-        content: JSON.stringify(this.projectCache.get(projectKey))
-      };
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to get project: ${error.message}`);
+    return {
+      type: 'application/json',
+      content: JSON.stringify(issue, null, 2)
+    };
+  }
+
+  private async planSprint(args: any): Promise<Tool.Response> {
+    const { projectKey, sprintName, sprintGoal, startDate, endDate, teamCapacity } = args;
+
+    // Get backlog issues
+    const backlogIssues = await this.jira.searchJira(
+      `project = ${projectKey} AND status = Backlog ORDER BY priority DESC, created ASC`,
+      { maxResults: 100 }
+    );
+
+    // Calculate sprint plan
+    const plannedIssues = [];
+    let totalPoints = 0;
+
+    for (const issue of backlogIssues.issues) {
+      const storyPoints = issue.fields.customfield_10016 || 0;
+      if (totalPoints + storyPoints <= teamCapacity) {
+        plannedIssues.push(issue);
+        totalPoints += storyPoints;
       }
-      throw new Error('Failed to get project');
     }
-  }
 
-  private async getSprintResource(params: ResourceTemplate.Parameters): Promise<Resource> {
-    throw new Error('Not implemented');
-  }
+    // Create sprint
+    const boards = await this.jira.getAllBoards({ projectKeyOrId: projectKey });
+    const scrum_board = boards.values.find(board => board.type === 'scrum');
+    
+    if (!scrum_board) {
+      throw new Error('No Scrum board found for project');
+    }
 
-  private async getIssueResource(params: ResourceTemplate.Parameters): Promise<Resource> {
-    throw new Error('Not implemented');
-  }
-}
+    const sprint = await this.jira.createSprint({
+      name: sprintName,
+      goal: sprintGoal,
+      startDate,
+      endDate,
+      originBoardId: scrum_board.id
+    });
 
-export function createServer(config: JiraConfig): JiraMCPServer {
-  return new JiraMCPServer(config);
+    // Move issues to sprint
+    await this.jira.moveIssuesToSprint(
+      sprint.id,
+      plannedIssues.map(issue => issue.id)
+    );
+
+    return {
+      type: 'application/json',
+      content: JSON.stringify({
+        sprint,
+        plannedIssues,
+        totalStoryPoints: totalPoints,
+        remainingCapacity: teamCapacity - totalPoints
+      }, null, 2)
+    };
+  }
 }
