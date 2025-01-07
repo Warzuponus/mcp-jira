@@ -1,6 +1,6 @@
-import { Server } from '@modelcontextprotocol/sdk/server';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types';
+import { Server } from '@modelcontextprotocol/typescript-sdk/dist/server';
+import { StdioServerTransport } from '@modelcontextprotocol/typescript-sdk/dist/server/stdio';
+import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/typescript-sdk/dist/types';
 import { JiraServer } from './server';
 
 // Validate environment variables
