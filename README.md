@@ -4,6 +4,7 @@ A Model Context Protocol (MCP) server that enables Language Models to interact w
 
 [![NPM version](https://img.shields.io/npm/v/@modelcontextprotocol/server-jira.svg)](https://www.npmjs.com/package/@modelcontextprotocol/server-jira)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![smithery badge](https://smithery.ai/badge/@modelcontextprotocol/server-jira)](https://smithery.ai/server/@modelcontextprotocol/server-jira)
 
 ## Features
 
@@ -21,6 +22,15 @@ A Model Context Protocol (MCP) server that enables Language Models to interact w
 
 ## Installation
 
+### Installing via Smithery
+
+To install JIRA Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@modelcontextprotocol/server-jira):
+
+```bash
+npx -y @smithery/cli install @modelcontextprotocol/server-jira --client claude
+```
+
+### Manual Installation
 ```bash
 npm install @modelcontextprotocol/server-jira
 ```
