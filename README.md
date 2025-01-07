@@ -1,155 +1,111 @@
-# MCP JIRA Server
+# JIRA MCP Assistant
 
-A Model Context Protocol (MCP) server that enables Language Models to interact with JIRA. This server provides a standardized interface for AI applications to manage JIRA issues, workflows, and tasks through the MCP specification.
-
-[![NPM version](https://img.shields.io/npm/v/@modelcontextprotocol/server-jira.svg)](https://www.npmjs.com/package/@modelcontextprotocol/server-jira)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+A Model Context Protocol (MCP) server that enables Claude to interact with JIRA for backlog management and issue tracking. This server provides capabilities for searching the backlog, creating issues, and updating issue details.
 
 ## Features
 
-- **JIRA Issue Management**
-  - Create new issues
-  - Update existing issues
-  - Search issues using JQL
-  - Track issue status changes
+1. **Search Backlog**
+   - Search issues in the project backlog
+   - Filter by search terms
+   - View issue details
 
-- **MCP Integration**
-  - Tools for JIRA operations
-  - Resource templates for issue access
-  - Real-time updates via SSE
-  - Pagination support
+2. **Update Issues**
+   - Change issue priority
+   - Update issue status
+   - Assign issues to team members
 
-## Installation
+3. **Create Issues**
+   - Create new issues in the backlog
+   - Set priority and type
+   - Add descriptions and summaries
 
+## Prerequisites
+
+- Node.js v18 or higher
+- JIRA instance with API access
+- JIRA API token
+
+## Getting Started
+
+1. **Installation**
 ```bash
-npm install @modelcontextprotocol/server-jira
+# Clone the repository
+git clone https://github.com/Warzuponus/mcp-jira.git
+cd mcp-jira
+
+# Install dependencies
+npm install
 ```
 
-## Configuration
+2. **JIRA API Token Setup**
+- Go to https://id.atlassian.com/manage-profile/security/api-tokens
+- Create an API token
+- Note down your:
+  - JIRA instance URL
+  - Email address
+  - API token
 
-### Environment Variables
+3. **Claude Desktop Configuration**
 
-```env
-JIRA_PROTOCOL=https
-JIRA_HOST=your-instance.atlassian.net
-JIRA_USERNAME=your-email@example.com
-JIRA_API_TOKEN=your-api-token
-JIRA_API_VERSION=2
-```
+Edit your Claude Desktop configuration file:
+- macOS: `~/Library/Application Support/Claude Desktop/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude Desktop\claude_desktop_config.json`
 
-### Claude Desktop Configuration
-
-Add to your `claude_desktop_config.json`:
-
+Add the following configuration:
 ```json
 {
   "mcpServers": {
     "jira": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-jira"
-      ],
+      "command": "node",
+      "args": ["/absolute/path/to/mcp-jira/index.js"],
       "env": {
-        "JIRA_PROTOCOL": "https",
-        "JIRA_HOST": "your-instance.atlassian.net",
-        "JIRA_USERNAME": "your-email@example.com",
-        "JIRA_API_TOKEN": "your-api-token",
-        "JIRA_API_VERSION": "2"
+        "JIRA_INSTANCE_URL": "https://your-instance.atlassian.net",
+        "JIRA_USER_EMAIL": "your-email@example.com",
+        "JIRA_API_TOKEN": "your-api-token"
       }
     }
   }
 }
 ```
 
-## API Reference
+4. **Restart Claude Desktop**
 
-### Tools
+## Example Usage
 
-1. `createIssue`
-   - Creates a new JIRA issue
-   - Parameters:
-     - `project` (string): Project key
-     - `summary` (string): Issue summary
-     - `description` (string): Issue description
-     - `issueType` (string): Type of issue
+Once configured, you can ask Claude questions like:
 
-2. `updateIssue`
-   - Updates an existing issue
-   - Parameters:
-     - `issueKey` (string): Key of the issue to update
-     - `summary` (string, optional): New summary
-     - `description` (string, optional): New description
-     - `status` (string, optional): New status
-
-3. `searchIssues`
-   - Searches for issues using JQL
-   - Parameters:
-     - `jql` (string): JQL query string
-     - `maxResults` (number, optional): Maximum results to return
-
-### Resources
-
-Access issue details using the resource template:
-```
-jira://issue/{issueKey}
-```
-
-Example:
-```
-jira://issue/PROJ-123
-```
+- "Show me all high priority items in the PROJECT backlog"
+- "Create a new bug report in PROJECT for the login page crash"
+- "Assign PROJ-123 to john.doe and set it to high priority"
+- "What issues are currently in the PROJECT backlog?"
 
 ## Development
 
-### Prerequisites
+### Running Locally
+```bash
+# Set environment variables
+export JIRA_INSTANCE_URL="https://your-instance.atlassian.net"
+export JIRA_USER_EMAIL="your-email@example.com"
+export JIRA_API_TOKEN="your-api-token"
 
-- Node.js 18+
-- npm or yarn
-- JIRA account with API access
-
-### Setup
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/Warzuponus/mcp-jira.git
-   cd mcp-jira
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Build the project:
-   ```bash
-   npm run build
-   ```
-
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
+# Run the server
+node index.js
+```
 
 ### Testing
-
+Test specific operations:
 ```bash
-npm test
+# Search backlog
+curl -X POST http://localhost:3000/tools/search_backlog -d '{"projectKey": "PROJ"...}'
+
+# Update issue
+curl -X POST http://localhost:3000/tools/update_issue -d '{"issueKey": "PROJ-123"...}'
 ```
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) for details on how to submit pull requests, report issues, and contribute to the project.
-
-## Security
-
-For security concerns, please see our [Security Policy](SECURITY.md).
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- Built with [Model Context Protocol](https://modelcontextprotocol.io/)
-- Uses [jira-client](https://github.com/jira-client/jira-client) for JIRA API integration
+MIT
