@@ -1,6 +1,4 @@
-import { Server } from '@modelcontextprotocol/typescript-sdk/dist/server';
-import { StdioServerTransport } from '@modelcontextprotocol/typescript-sdk/dist/server/stdio';
-import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/typescript-sdk/dist/types';
+import { Server, StdioServerTransport, ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/typescript-sdk';
 import { JiraServer } from './server';
 
 // Validate environment variables
@@ -41,7 +39,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 }));
 
 // Handle tool execution
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name: string; arguments: any } }) => {
   const { name, arguments: args } = request.params;
   return await jiraServer.executeTool(name, args);
 });
