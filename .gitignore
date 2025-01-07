@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# Logs
+npm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
