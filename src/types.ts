@@ -1,16 +1,41 @@
 export interface JiraConfig {
-  protocol: string;
-  host: string;
-  username: string;
-  password: string;
-  apiVersion: string;
+  instanceUrl: string;
+  email: string;
+  apiKey: string;
 }
 
-export interface SprintPlanningInput {
-  projectKey: string;
-  sprintName: string;
-  sprintGoal: string;
+export interface SprintConfig {
+  name: string;
+  goal?: string;
   startDate: string;
   endDate: string;
-  teamCapacity: number;
+  originBoardId: number;
+}
+
+export interface JiraIssue {
+  id: string;
+  key: string;
+  fields: {
+    summary: string;
+    description: string;
+    status: {
+      name: string;
+      statusCategory: {
+        key: string;
+      };
+    };
+    priority?: {
+      name: string;
+    };
+    customfield_10016?: number; // Story points
+  };
+}
+
+export interface JiraBoard {
+  id: number;
+  type: string;
+}
+
+export interface JiraBoards {
+  values: JiraBoard[];
 }
