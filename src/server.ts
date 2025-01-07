@@ -1,4 +1,4 @@
-import { BaseServer, Tool, Resource, ResourceTemplate, ToolError } from '@modelcontextprotocol/typescript-sdk';
+import { BaseServer, Tool, Resource, ResourceTemplate, ToolError } from '@modelcontextprotocol/sdk';
 import JiraApi from 'jira-client';
 import { JiraConfig, SprintPlanningInput } from './types';
 
