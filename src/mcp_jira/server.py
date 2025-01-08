@@ -1,19 +1,17 @@
 """
 FastAPI server implementation for MCP Jira with Scrum Master features.
-Core server component handling HTTP endpoints and MCP protocol integration.
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Security
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
+from typing import List, Optional
 from datetime import datetime
 
 from .jira_client import JiraClient
 from .scrum_master import ScrumMaster
-from .types import IssueType, Priority, SprintStatus
+from .types import IssueType, Priority, SprintAnalysis, IssueCreate, SprintPlanRequest
 from .config import Settings
+from .auth import TokenAuth, get_auth_handler
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -31,42 +29,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Security
-api_key_header = APIKeyHeader(name="X-API-Key")
-
-# Pydantic models
-class IssueCreate(BaseModel):
-    summary: str
-    description: str
-    issue_type: IssueType
-    priority: Priority
-    story_points: Optional[int] = None
-    assignee: Optional[str] = None
-    labels: Optional[List[str]] = None
-    components: Optional[List[str]] = None
-
-class SprintPlanRequest(BaseModel):
-    target_velocity: int
-    team_members: List[str]
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
-
-class SprintAnalysis(BaseModel):
-    sprint_id: int
-    completion_percentage: float
-    remaining_story_points: int
-    velocity: float
-    risks: List[str]
-    recommendations: List[str]
-    blocked_issues: List[str]
-
-class StandupReport(BaseModel):
-    date: datetime
-    completed_yesterday: List[Dict[str, Any]]
-    in_progress: List[Dict[str, Any]]
-    blocked: List[Dict[str, Any]]
-    team_metrics: Dict[str, Any]
-
 # Dependencies
 def get_settings():
     return Settings()
@@ -77,23 +39,15 @@ def get_jira_client(settings: Settings = Depends(get_settings)):
 def get_scrum_master(jira_client: JiraClient = Depends(get_jira_client)):
     return ScrumMaster(jira_client)
 
-async def verify_api_key(
-    api_key: str = Security(api_key_header),
-    settings: Settings = Depends(get_settings)
-):
-    if api_key != settings.api_key:
-        raise HTTPException(
-            status_code=403,
-            detail="Invalid API key"
-        )
-    return api_key
+# Initialize auth handler
+auth_handler = TokenAuth(Settings().api_key)
 
-# Core endpoints
-@app.post("/issues", response_model=Dict[str, str])
+# API Endpoints
+@app.post("/issues")
 async def create_issue(
     issue: IssueCreate,
-    jira_client: JiraClient = Depends(get_jira_client),
-    _: str = Depends(verify_api_key)
+    auth: bool = Depends(auth_handler.verify_token),
+    jira_client: JiraClient = Depends(get_jira_client)
 ):
     """Create a new Jira issue"""
     try:
@@ -103,39 +57,35 @@ async def create_issue(
             issue_type=issue.issue_type,
             priority=issue.priority,
             story_points=issue.story_points,
-            assignee=issue.assignee,
-            labels=issue.labels,
-            components=issue.components
+            assignee=issue.assignee
         )
         return {"issue_key": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/sprints/{sprint_id}/plan", response_model=Dict[str, List[str]])
+@app.post("/sprints/{sprint_id}/plan")
 async def plan_sprint(
     sprint_id: int,
     plan_request: SprintPlanRequest,
-    scrum_master: ScrumMaster = Depends(get_scrum_master),
-    _: str = Depends(verify_api_key)
+    auth: bool = Depends(auth_handler.verify_token),
+    scrum_master: ScrumMaster = Depends(get_scrum_master)
 ):
     """Plan a sprint with automated workload balancing"""
     try:
         recommendations = await scrum_master.plan_sprint(
             sprint_id=sprint_id,
             target_velocity=plan_request.target_velocity,
-            team_members=plan_request.team_members,
-            start_date=plan_request.start_date,
-            end_date=plan_request.end_date
+            team_members=plan_request.team_members
         )
         return {"recommendations": recommendations}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/sprints/{sprint_id}/analysis", response_model=SprintAnalysis)
+@app.get("/sprints/{sprint_id}/analysis")
 async def analyze_sprint(
     sprint_id: int,
-    scrum_master: ScrumMaster = Depends(get_scrum_master),
-    _: str = Depends(verify_api_key)
+    auth: bool = Depends(auth_handler.verify_token),
+    scrum_master: ScrumMaster = Depends(get_scrum_master)
 ):
     """Analyze sprint progress and identify risks"""
     try:
@@ -143,10 +93,10 @@ async def analyze_sprint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/daily-standup", response_model=StandupReport)
+@app.get("/daily-standup")
 async def generate_standup_report(
-    scrum_master: ScrumMaster = Depends(get_scrum_master),
-    _: str = Depends(verify_api_key)
+    auth: bool = Depends(auth_handler.verify_token),
+    scrum_master: ScrumMaster = Depends(get_scrum_master)
 ):
     """Generate daily standup report with team metrics"""
     try:
@@ -158,8 +108,8 @@ async def generate_standup_report(
 async def balance_sprint_workload(
     sprint_id: int,
     team_members: List[str],
-    scrum_master: ScrumMaster = Depends(get_scrum_master),
-    _: str = Depends(verify_api_key)
+    auth: bool = Depends(auth_handler.verify_token),
+    scrum_master: ScrumMaster = Depends(get_scrum_master)
 ):
     """Balance workload across team members for a sprint"""
     try:
@@ -167,22 +117,9 @@ async def balance_sprint_workload(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/sprints/{sprint_id}/risks")
-async def identify_sprint_risks(
-    sprint_id: int,
-    scrum_master: ScrumMaster = Depends(get_scrum_master),
-    _: str = Depends(verify_api_key)
-):
-    """Identify potential risks in the current sprint"""
-    try:
-        return await scrum_master.identify_risks(sprint_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Health check endpoint
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint - no auth required"""
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
