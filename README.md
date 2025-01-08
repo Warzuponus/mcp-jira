@@ -1,6 +1,6 @@
 # MCP Jira Integration
 
-A Model Context Protocol (MCP) integration for Jira that enables AI assistants like Claude to interact with Jira's API. This implementation provides a standardized way to create and manage Jira issues, track sprints, and access Jira data through the MCP protocol.
+This project integrates Claude AI with Jira to automate and enhance project management tasks.
 
 ## Features
 
