@@ -1,0 +1,19 @@
+[project]
+name = "mcp-jira"
+version = "0.1.0"
+description = "Model Context Protocol server for Jira with Scrum Master capabilities"
+authors = [{name = "Warzuponus"}]
+dependencies = [
+    "fastapi>=0.68.0",
+    "uvicorn>=0.15.0",
+    "jira>=3.5.1",
+    "python-dotenv>=0.19.0",
+    "pydantic>=2.0.0"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
