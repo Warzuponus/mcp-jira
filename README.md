@@ -41,19 +41,19 @@ from mcp_jira.protocol import MCPRequest, MCPContext
 
 # Create request context
 context = MCPContext(
-    conversation_id="conv-123",
-    user_id="user-123",
-    api_key="your_api_key"
+    conversation_id=\"conv-123\",
+    user_id=\"user-123\",
+    api_key=\"your_api_key\"
 )
 
 # Create issue request
 request = MCPRequest(
-    function="create_issue",
+    function=\"create_issue\",
     parameters={
-        "summary": "Implement feature X",
-        "description": "Detailed description",
-        "issue_type": "Story",
-        "priority": "High"
+        \"summary\": \"Implement feature X\",
+        \"description\": \"Detailed description\",
+        \"issue_type\": \"Story\",
+        \"priority\": \"High\"
     },
     context=context
 )
@@ -64,9 +64,9 @@ response = await mcp_handler.process_request(request)
 ### Search Issues
 ```python
 request = MCPRequest(
-    function="search_issues",
+    function=\"search_issues\",
     parameters={
-        "jql": "project = PROJ AND status = 'In Progress'"
+        \"jql\": \"project = PROJ AND status = 'In Progress'\"
     },
     context=context
 )
@@ -79,7 +79,7 @@ response = await mcp_handler.process_request(request)
 All requests require an API key in the request header:
 ```python
 headers = {
-    "X-API-Key": "your_api_key"
+    \"X-API-Key\": \"your_api_key\"
 }
 ```
 
@@ -99,4 +99,6 @@ This MCP implementation is designed to work with AI assistants that support the 
 
 ## License
 
-MIT License - see LICENSE file
+MIT License - see LICENSE file`,
+  `message`: `Update README to reflect current functionality`
+}
