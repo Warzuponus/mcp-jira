@@ -16,6 +16,7 @@ from .types import (
 )
 from .jira_client import JiraClient
 from .scrum_master import ScrumMaster
+from .auth import TokenAuth
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class MCPContext(BaseModel):
     user_id: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    api_key: str  # Add API key to context
 
 class MCPRequest(BaseModel):
     """MCP Request Structure"""
@@ -62,9 +64,10 @@ class MCPProtocolHandler:
     Main handler for MCP protocol implementation.
     Manages resources, functions, and request processing.
     """
-    def __init__(self, jira_client: JiraClient, scrum_master: ScrumMaster):
+    def __init__(self, jira_client: JiraClient, scrum_master: ScrumMaster, auth_handler: TokenAuth):
         self.jira = jira_client
         self.scrum_master = scrum_master
+        self.auth_handler = auth_handler
         self.functions: Dict[str, MCPFunction] = {}
         self._register_core_functions()
 
@@ -114,10 +117,20 @@ class MCPProtocolHandler:
         self.functions[function.name] = function
         logger.info(f"Registered MCP function: {function.name}")
 
-    async def process_request(self, request: MCPRequest) -> MCPResponse:
+        async def process_request(self, request: MCPRequest) -> MCPResponse:
         """Process an MCP request"""
         try:
-            # Validate function exists
+            # Verify API key
+            try:
+                await self.auth_handler.verify_token(request.context.api_key)
+            except Exception as auth_error:
+                return MCPResponse(
+                    status="error",
+                    error="Authentication failed: Invalid API key",
+                    context=request.context
+                )
+
+            # Rest of the validation and processing remains the same
             if request.function not in self.functions:
                 return MCPResponse(
                     status="error",
@@ -125,10 +138,7 @@ class MCPProtocolHandler:
                     context=request.context
                 )
 
-            # Get function definition
             function = self.functions[request.function]
-
-            # Validate resource type
             if function.resource_type != request.resource_type:
                 return MCPResponse(
                     status="error",
@@ -136,7 +146,6 @@ class MCPProtocolHandler:
                     context=request.context
                 )
 
-            # Get handler method
             handler = getattr(self, function.handler)
             if not handler:
                 return MCPResponse(
@@ -145,7 +154,6 @@ class MCPProtocolHandler:
                     context=request.context
                 )
 
-            # Execute handler
             result = await handler(request.parameters, request.context)
             
             return MCPResponse(
