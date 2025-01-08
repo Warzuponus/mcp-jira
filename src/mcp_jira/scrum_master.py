@@ -1,301 +1,196 @@
-from typing import List, Optional, Dict, Any
+"""
+ScrumMaster class implementation for MCP Jira.
+Handles sprint planning, analysis, risk assessment, and team management.
+"""
+
 from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Tuple
+import logging
+from statistics import mean, stdev
+
 from .jira_client import JiraClient
-from .types import Issue, Sprint, SprintMetrics, Priority, IssueType
+from .types import (
+    Sprint, Issue, TeamMember, Risk, SprintMetrics, 
+    WorkloadBalance, RiskType, RiskLevel, IssueStatus,
+    SprintStatus, DailyStandupItem
+)
+
+logger = logging.getLogger(__name__)
 
 class ScrumMaster:
-    def __init__(self):
-        self.jira = JiraClient()
-
-    async def plan_sprint(self, sprint_id: int, target_velocity: float) -> Dict[str, Any]:
-        """Plan and provide recommendations for sprint planning"""
-        metrics = await self.jira.get_sprint_metrics(sprint_id)
-        
-        analysis = {
-            "recommendations": [],
-            "workload_distribution": {},
-            "risks": [],
-            "capacity_analysis": {
-                "total_points": metrics.total_points,
-                "target_velocity": target_velocity,
-                "variance": metrics.total_points - target_velocity
-            }
+    def __init__(self, jira_client: JiraClient):
+        self.jira = jira_client
+        self.RISK_THRESHOLDS = {
+            'velocity_variance': 0.2,  # 20% variance from historical velocity
+            'workload_imbalance': 0.3,  # 30% difference between team members
+            'blocking_issues': 2,  # More than 2 blocking issues is high risk
+            'scope_change': 0.15,  # 15% scope change is concerning
         }
 
-        # Analyze workload distribution
-        for issue in metrics.issues:
-            if issue.assignee:
-                points = issue.story_points or 0
-                if issue.assignee not in analysis["workload_distribution"]:
-                    analysis["workload_distribution"][issue.assignee] = {
-                        "points": 0,
-                        "issues": []
-                    }
-                analysis["workload_distribution"][issue.assignee]["points"] += points
-                analysis["workload_distribution"][issue.assignee]["issues"].append({
-                    "key": issue.key,
-                    "points": points,
-                    "summary": issue.summary
-                })
-
-        # Generate recommendations
-        if metrics.total_points > target_velocity * 1.2:
-            analysis["recommendations"].append({
-                "type": "overcommitment",
-                "severity": "high",
-                "message": f"Sprint is overcommitted by {metrics.total_points - target_velocity} points",
-                "action": "Review and potentially remove lower priority items",
-                "details": {
-                    "current_points": metrics.total_points,
-                    "target_points": target_velocity,
-                    "overage": metrics.total_points - target_velocity
-                }
-            })
-
-        # Check workload balance
-        team_size = len(analysis["workload_distribution"])
-        if team_size > 0:
-            avg_points = target_velocity / team_size
-            for assignee, workload in analysis["workload_distribution"].items():
-                if workload["points"] > avg_points * 1.3:
-                    analysis["recommendations"].append({
-                        "type": "workload_imbalance",
-                        "severity": "medium",
-                        "message": f"{assignee} is overloaded with {workload['points']} points",
-                        "action": "Redistribute work to team members with less load",
-                        "details": {
-                            "assignee": assignee,
-                            "current_points": workload["points"],
-                            "team_average": avg_points,
-                            "affected_issues": workload["issues"]
-                        }
-                    })
-
-        # Story point distribution analysis
-        story_points_distribution = {}
-        for issue in metrics.issues:
-            points = issue.story_points or 0
-            if points not in story_points_distribution:
-                story_points_distribution[points] = 0
-            story_points_distribution[points] += 1
-
-        if 13 in story_points_distribution or 21 in story_points_distribution:
-            analysis["recommendations"].append({
-                "type": "large_stories",
-                "severity": "medium",
-                "message": "Some stories might be too large for a single sprint",
-                "action": "Consider breaking down stories larger than 8 points",
-                "details": {
-                    "distribution": story_points_distribution
-                }
-            })
-
-        return analysis
-
-    async def analyze_progress(self, sprint_id: int) -> Dict[str, Any]:
-        """Analyze sprint progress and identify risks"""
-        metrics = await self.jira.get_sprint_metrics(sprint_id)
+    async def plan_sprint(
+        self,
+        sprint_id: int,
+        target_velocity: float,
+        team_members: List[str],
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> List[str]:
+        """Plan a sprint with automated workload balancing."""
+        recommendations = []
+        
+        # Get sprint and team data
         sprint = await self.jira.get_sprint(sprint_id)
+        team_capacities = await self._calculate_team_capacities(team_members)
+        backlog_issues = await self.jira.get_backlog_issues()
         
-        analysis = {
-            "metrics": {
-                "total_points": metrics.total_points,
-                "completed_points": metrics.completed_points,
-                "remaining_points": metrics.remaining_points,
-                "completion_percentage": metrics.completion_percentage,
-                "time_remaining": self._calculate_time_remaining(sprint)
-            },
-            "risks": [],
-            "recommendations": [],
-            "status_distribution": {},
-            "blocked_issues": []
-        }
-
-        # Status distribution analysis
-        for issue in metrics.issues:
-            if issue.status not in analysis["status_distribution"]:
-                analysis["status_distribution"][issue.status] = {
-                    "count": 0,
-                    "points": 0,
-                    "issues": []
-                }
-            status_data = analysis["status_distribution"][issue.status]
-            status_data["count"] += 1
-            status_data["points"] += issue.story_points or 0
-            status_data["issues"].append({
-                "key": issue.key,
-                "summary": issue.summary,
-                "points": issue.story_points
-            })
-
-            # Track blocked issues
-            if issue.status.lower() in ['blocked', 'impediment']:
-                analysis["blocked_issues"].append({
-                    "key": issue.key,
-                    "summary": issue.summary,
-                    "points": issue.story_points,
-                    "assignee": issue.assignee
-                })
-
-        # Calculate ideal burndown
-        total_days = self._calculate_sprint_length(sprint)
-        if total_days > 0:
-            days_elapsed = self._calculate_days_elapsed(sprint)
-            ideal_completion = (days_elapsed / total_days) * 100
-            
-            if metrics.completion_percentage < ideal_completion - 20:
-                analysis["risks"].append({
-                    "type": "behind_schedule",
-                    "severity": "high",
-                    "message": f"Sprint is significantly behind schedule",
-                    "details": {
-                        "current_completion": metrics.completion_percentage,
-                        "expected_completion": ideal_completion,
-                        "variance": ideal_completion - metrics.completion_percentage
-                    }
-                })
-
-        # Analyze blocked issues impact
-        if analysis["blocked_issues"]:
-            blocked_points = sum(issue["points"] or 0 for issue in analysis["blocked_issues"])
-            if blocked_points > metrics.total_points * 0.2:
-                analysis["risks"].append({
-                    "type": "blocked_work",
-                    "severity": "high",
-                    "message": f"Large amount of work is blocked ({blocked_points} points)",
-                    "action": "Immediate scrum master intervention needed",
-                    "details": {
-                        "blocked_points": blocked_points,
-                        "blocked_percentage": (blocked_points / metrics.total_points) * 100,
-                        "blocked_issues": analysis["blocked_issues"]
-                    }
-                })
-
-        return analysis
-
-    async def suggest_priority_updates(self, sprint_id: int) -> List[Dict[str, Any]]:
-        """Suggest priority updates based on sprint progress"""
-        metrics = await self.jira.get_sprint_metrics(sprint_id)
-        suggestions = []
-
-        for issue in metrics.issues:
-            # Suggest priority increases for blocked issues
-            if issue.status.lower() in ['blocked', 'impediment'] and issue.priority != Priority.HIGHEST:
-                suggestions.append({
-                    "issue_key": issue.key,
-                    "type": "priority_increase",
-                    "current_priority": issue.priority,
-                    "suggested_priority": Priority.HIGHEST,
-                    "reason": "Blocked issue impacting sprint progress",
-                    "action": {
-                        "field": "priority",
-                        "value": Priority.HIGHEST.value
-                    }
-                })
-
-            # Suggest priority increases for high-point items not started
-            if (issue.story_points or 0) > 5 and issue.status.lower() in ['to do', 'open']:
-                suggestions.append({
-                    "issue_key": issue.key,
-                    "type": "priority_increase",
-                    "current_priority": issue.priority,
-                    "suggested_priority": Priority.HIGH,
-                    "reason": "High-effort item not started",
-                    "action": {
-                        "field": "priority",
-                        "value": Priority.HIGH.value
-                    }
-                })
-
-        return suggestions
-
-    async def get_daily_standup_report(self, sprint_id: int) -> Dict[str, Any]:
-        """Generate a daily standup report"""
-        metrics = await self.jira.get_sprint_metrics(sprint_id)
-        yesterday_cutoff = datetime.now() - timedelta(days=1)
+        # Calculate sprint capacity
+        total_capacity = sum(team_capacities.values())
+        ideal_points_per_member = target_velocity / len(team_members)
         
-        report = {
-            "date": datetime.now().isoformat(),
-            "sprint_metrics": {
-                "completion_percentage": metrics.completion_percentage,
-                "remaining_points": metrics.remaining_points
-            },
-            "team_updates": {},
-            "blockers": [],
-            "priorities": []
-        }
-
-        # Gather team member updates
-        for issue in metrics.issues:
-            if issue.assignee:
-                if issue.assignee not in report["team_updates"]:
-                    report["team_updates"][issue.assignee] = {
-                        "completed": [],
-                        "in_progress": [],
-                        "planned": []
-                    }
+        # Prioritize and select issues
+        selected_issues = []
+        current_points = 0
+        
+        for issue in backlog_issues:
+            if current_points >= target_velocity:
+                break
                 
-                updates = report["team_updates"][issue.assignee]
-                issue_info = {
-                    "key": issue.key,
-                    "summary": issue.summary,
-                    "points": issue.story_points
-                }
+            if issue.story_points and current_points + issue.story_points <= target_velocity * 1.1:
+                selected_issues.append(issue)
+                current_points += issue.story_points
+                
+        # Generate recommendations
+        if current_points < target_velocity * 0.9:
+            recommendations.append(f"Warning: Selected issues ({current_points} points) are below target velocity ({target_velocity} points)")
+            
+        if len(selected_issues) > len(team_members) * 3:
+            recommendations.append("Warning: High number of issues per team member may impact focus")
+            
+        # Balance workload
+        workload = await self.balance_workload(sprint_id, team_members)
+        recommendations.extend(self._generate_workload_recommendations(workload))
+        
+        return recommendations
 
-                if issue.status.lower() in ['done', 'completed']:
-                    updates["completed"].append(issue_info)
-                elif issue.status.lower() in ['in progress']:
-                    updates["in_progress"].append(issue_info)
-                elif issue.status.lower() in ['to do', 'open']:
-                    updates["planned"].append(issue_info)
+    async def analyze_progress(self, sprint_id: int) -> SprintMetrics:
+        """Analyze sprint progress and generate metrics."""
+        sprint = await self.jira.get_sprint(sprint_id)
+        sprint_issues = await self.jira.get_sprint_issues(sprint_id)
+        
+        # Calculate core metrics
+        completed_points = sum(issue.story_points for issue in sprint_issues 
+                             if issue.status == IssueStatus.DONE and issue.story_points)
+        total_points = sum(issue.story_points for issue in sprint_issues if issue.story_points)
+        
+        completion_rate = completed_points / total_points if total_points > 0 else 0
+        
+        # Calculate velocity and variance
+        historical_velocities = await self._get_historical_velocities(3)  # Last 3 sprints
+        current_velocity = completed_points / ((sprint.end_date - sprint.start_date).days / 7)
+        
+        metrics = SprintMetrics(
+            velocity=current_velocity,
+            completion_rate=completion_rate,
+            average_cycle_time=await self._calculate_cycle_time(sprint_issues),
+            blocked_issues_count=len([i for i in sprint_issues if i.status == IssueStatus.BLOCKED]),
+            scope_changes=await self._count_scope_changes(sprint_id),
+            team_capacity=await self._calculate_team_capacity(sprint_id),
+            burndown_ideal=self._generate_ideal_burndown(sprint, total_points),
+            burndown_actual=await self._generate_actual_burndown(sprint_id)
+        )
+        
+        return metrics
 
-                if issue.status.lower() in ['blocked', 'impediment']:
-                    report["blockers"].append({
-                        "key": issue.key,
-                        "summary": issue.summary,
-                        "assignee": issue.assignee,
-                        "points": issue.story_points
-                    })
+    async def identify_risks(self, sprint_id: int) -> List[Risk]:
+        """Identify potential risks in the current sprint."""
+        risks = []
+        sprint = await self.jira.get_sprint(sprint_id)
+        issues = await self.jira.get_sprint_issues(sprint_id)
+        
+        # Analyze velocity risk
+        velocity_risk = await self._assess_velocity_risk(sprint_id)
+        if velocity_risk:
+            risks.append(velocity_risk)
+            
+        # Analyze dependency risks
+        dependency_risks = await self._assess_dependency_risks(issues)
+        risks.extend(dependency_risks)
+        
+        # Analyze capacity risks
+        capacity_risk = await self._assess_capacity_risk(sprint_id)
+        if capacity_risk:
+            risks.append(capacity_risk)
+            
+        # Analyze scope risks
+        scope_risk = await self._assess_scope_risk(sprint_id)
+        if scope_risk:
+            risks.append(scope_risk)
+            
+        return risks
 
-        # Identify top priorities
-        high_priority_issues = [
-            issue for issue in metrics.issues
-            if issue.priority in [Priority.HIGHEST, Priority.HIGH]
-            and issue.status.lower() not in ['done', 'completed']
-        ]
-        report["priorities"] = [
-            {
-                "key": issue.key,
-                "summary": issue.summary,
-                "assignee": issue.assignee,
-                "points": issue.story_points,
-                "status": issue.status
-            }
-            for issue in high_priority_issues
-        ]
+    async def generate_standup_report(self) -> Dict[str, List[DailyStandupItem]]:
+        """Generate daily standup report with team metrics."""
+        active_sprint = await self.jira.get_active_sprint()
+        if not active_sprint:
+            raise ValueError("No active sprint found")
+            
+        issues = await self.jira.get_sprint_issues(active_sprint.id)
+        
+        # Categorize issues
+        completed_yesterday = []
+        in_progress = []
+        blocked = []
+        
+        yesterday = datetime.now() - timedelta(days=1)
+        
+        for issue in issues:
+            if issue.status == IssueStatus.DONE and issue.updated_at.date() == yesterday.date():
+                completed_yesterday.append(self._create_standup_item(issue))
+            elif issue.status == IssueStatus.IN_PROGRESS:
+                in_progress.append(self._create_standup_item(issue))
+            elif issue.status == IssueStatus.BLOCKED:
+                blocked.append(self._create_standup_item(issue))
+                
+        return {
+            "completed_yesterday": completed_yesterday,
+            "in_progress": in_progress,
+            "blocked": blocked,
+            "metrics": await self._get_daily_metrics(active_sprint.id)
+        }
 
-        return report
+    # Helper methods
+    async def _calculate_team_capacities(self, team_members: List[str]) -> Dict[str, float]:
+        """Calculate capacity for each team member."""
+        capacities = {}
+        for member in team_members:
+            member_issues = await self.jira.get_assigned_issues(member)
+            current_workload = sum(issue.story_points for issue in member_issues if issue.story_points)
+            capacities[member] = max(0, 1 - (current_workload / 20))  # Assuming 20 points is full capacity
+        return capacities
 
-    def _calculate_time_remaining(self, sprint: Sprint) -> Optional[int]:
-        """Calculate remaining days in sprint"""
-        if sprint.end_date:
-            end_date = datetime.fromisoformat(sprint.end_date.replace('Z', '+00:00'))
-            remaining = end_date - datetime.now(end_date.tzinfo)
-            return max(0, remaining.days)
-        return None
+    async def _calculate_cycle_time(self, issues: List[Issue]) -> float:
+        """Calculate average cycle time for completed issues."""
+        cycle_times = []
+        for issue in issues:
+            if issue.status == IssueStatus.DONE:
+                history = await self.jira.get_issue_history(issue.key)
+                in_progress_time = sum(
+                    (entry['to_date'] - entry['from_date']).days
+                    for entry in history
+                    if entry['status'] == IssueStatus.IN_PROGRESS
+                )
+                cycle_times.append(in_progress_time)
+        return mean(cycle_times) if cycle_times else 0
 
-    def _calculate_sprint_length(self, sprint: Sprint) -> int:
-        """Calculate total sprint length in days"""
-        if sprint.start_date and sprint.end_date:
-            start = datetime.fromisoformat(sprint.start_date.replace('Z', '+00:00'))
-            end = datetime.fromisoformat(sprint.end_date.replace('Z', '+00:00'))
-            return (end - start).days
-        return 0
+    def _create_standup_item(self, issue: Issue) -> DailyStandupItem:
+        """Create a standup item from an issue."""
+        return DailyStandupItem(
+            issue_key=issue.key,
+            summary=issue.summary,
+            status=issue.status,
+            assignee=issue.assignee.display_name if issue.assignee else "Unassigned",
+            blocked_reason=next((block.description for block in issue.blocked_by), None),
+            time_spent=None  # TODO: Implement time tracking
+        )
 
-    def _calculate_days_elapsed(self, sprint: Sprint) -> int:
-        """Calculate days elapsed in sprint"""
-        if sprint.start_date:
-            start = datetime.fromisoformat(sprint.start_date.replace('Z', '+00:00'))
-            elapsed = datetime.now(start.tzinfo) - start
-            return elapsed.days
-        return 0
+    # Additional helper methods would go here...
