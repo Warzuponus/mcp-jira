@@ -1,3 +1,6 @@
+"""
+FastAPI server implementation for MCP Jira with Scrum Master features.
+"""
 from fastapi import FastAPI, HTTPException, Depends
 from typing import List, Optional
 from pydantic import BaseModel
@@ -13,7 +16,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Pydantic models for request/response
+# Pydantic models
 class IssueCreate(BaseModel):
     summary: str
     description: str
@@ -40,8 +43,8 @@ def get_jira_client():
 def get_scrum_master(jira_client: JiraClient = Depends(get_jira_client)):
     return ScrumMaster(jira_client)
 
-# Core endpoints
-@app.post("/issues", response_model=dict)
+# API Endpoints
+@app.post("/issues")
 async def create_issue(
     issue: IssueCreate,
     jira_client: JiraClient = Depends(get_jira_client)
@@ -77,7 +80,7 @@ async def plan_sprint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/sprints/{sprint_id}/analysis", response_model=SprintAnalysis)
+@app.get("/sprints/{sprint_id}/analysis")
 async def analyze_sprint(
     sprint_id: int,
     scrum_master: ScrumMaster = Depends(get_scrum_master)
@@ -88,17 +91,6 @@ async def analyze_sprint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/daily-standup")
-async def generate_standup_report(
-    scrum_master: ScrumMaster = Depends(get_scrum_master)
-):
-    """Generate daily standup report"""
-    try:
-        return await scrum_master.generate_standup_report()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
