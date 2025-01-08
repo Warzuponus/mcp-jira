@@ -1,124 +1,74 @@
-# MCP Jira with Scrum Master Features
+# MCP Jira Integration
 
-A Python-based Model Context Protocol (MCP) server for Jira that includes enhanced Scrum Master and Executive Assistant capabilities. This MCP implementation allows Claude to interact with Jira, manage sprints, and provide Scrum Master assistance.
+A Model Context Protocol (MCP) integration for Jira that enables AI assistants like Claude to interact with Jira's API. This implementation provides a standardized way to create and manage Jira issues, track sprints, and access Jira data through the MCP protocol.
 
 ## Features
 
-### Core MCP Features
-- Jira issue creation and management
-- Sprint tracking and metrics
-- Resource and function-based MCP protocol
-- API key authentication
+### Core Functionality
+- Jira issue creation and management through MCP protocol
+- API key-based authentication
+- Standardized request/response format for AI interactions
 
-### Scrum Master Features
-- Automated sprint planning
-- Progress analysis and tracking
-- Workload balancing
-- Risk identification
-- Priority management
-
-### Executive Assistant Features
-- Daily standup report generation
-- Sprint metrics and analytics
-- Team performance tracking
-- Blocking issue detection
+### Jira Integration Features
+- Issue creation and updates
+- Basic sprint tracking
+- Project and board management
+- Issue search and retrieval
 
 ## Requirements
 
 - Python 3.8 or higher
 - Jira account with API token
-- FastAPI
-- Pydantic
-- aiohttp
+- Valid MCP implementation
 
 ## Setup
 
 1. Clone the repository
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # or venv\Scripts\activate on Windows
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -e .
-   ```
-4. Configure environment variables in `.env`:
+2. Configure environment variables in `.env`:
    ```env
    JIRA_URL=https://your-domain.atlassian.net
    JIRA_USERNAME=your.email@domain.com
    JIRA_API_TOKEN=your_api_token
    PROJECT_KEY=PROJ
-   DEFAULT_BOARD_ID=123
    API_KEY=your_secure_api_key  # For MCP authentication
    ```
 
-## Usage
-
-1. Start the server:
-   ```bash
-   uvicorn mcp_jira.server:app --reload
-   ```
-
-2. Access the API documentation at `http://localhost:8000/docs`
-
-## API Examples
+## API Usage
 
 ### Create Issue
 ```python
-# First, initialize the components
-from mcp_jira.mcp_protocol import MCPProtocolHandler, MCPRequest, MCPContext, MCPResourceType
-from mcp_jira.types import IssueType, Priority
+from mcp_jira.protocol import MCPRequest, MCPContext
 
 # Create request context
 context = MCPContext(
-    conversation_id="test-conv",
-    user_id="test-user",
+    conversation_id="conv-123",
+    user_id="user-123",
     api_key="your_api_key"
 )
 
-# Create and send request
+# Create issue request
 request = MCPRequest(
     function="create_issue",
     parameters={
         "summary": "Implement feature X",
         "description": "Detailed description",
         "issue_type": "Story",
-        "priority": "High",
-        "story_points": 5
+        "priority": "High"
     },
-    context=context,
-    resource_type=MCPResourceType.ISSUE
+    context=context
 )
 
 response = await mcp_handler.process_request(request)
 ```
 
-### Plan Sprint
+### Search Issues
 ```python
 request = MCPRequest(
-    function="plan_sprint",
+    function="search_issues",
     parameters={
-        "sprint_id": 123,
-        "target_velocity": 30,
-        "team_members": ["user1", "user2"]
+        "jql": "project = PROJ AND status = 'In Progress'"
     },
-    context=context,
-    resource_type=MCPResourceType.SPRINT
-)
-
-response = await mcp_handler.process_request(request)
-```
-
-### Analyze Progress
-```python
-request = MCPRequest(
-    function="analyze_sprint",
-    parameters={
-        "sprint_id": 123
-    },
-    context=context,
-    resource_type=MCPResourceType.SPRINT
+    context=context
 )
 
 response = await mcp_handler.process_request(request)
@@ -126,30 +76,20 @@ response = await mcp_handler.process_request(request)
 
 ## Authentication
 
-All API requests require an API key to be provided in the request header:
+All requests require an API key in the request header:
 ```python
 headers = {
     "X-API-Key": "your_api_key"
 }
 ```
 
-## Claude Desktop Integration
+## Integration with AI Assistants
 
-To use this MCP with Claude Desktop:
+This MCP implementation is designed to work with AI assistants that support the MCP protocol:
 
-1. Install the package
-2. Set up your environment variables
-3. Use the provided example scripts in the `examples` directory
-
-Example:
-```python
-from mcp_jira.examples.claude_test import handle_claude_request
-
-# Test with Claude
-message = "Create a new issue for implementing user authentication"
-response = await handle_claude_request(message)
-print(response)
-```
+1. Configure the environment variables
+2. Set up the MCP endpoint in your AI assistant's configuration
+3. Use the standardized MCP protocol for Jira interactions
 
 ## Contributing
 
