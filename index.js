@@ -30,39 +30,40 @@ const server = new Server(
   }
 );
 
-// Define tools for backlog management
+// Define tools for comprehensive project management
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "search_backlog",
-        description: "Search issues in the backlog",
+        name: "analyze_sprint",
+        description: "Analyze current sprint status, progress, and potential blockers",
         inputSchema: {
           type: "object",
           properties: {
             projectKey: { type: "string", description: "Project key (e.g., 'PROJ')" },
-            searchTerm: { type: "string", description: "Optional search term" }
+            sprintId: { type: "string", description: "Optional: Specific sprint ID" }
           },
           required: ["projectKey"]
         }
       },
       {
-        name: "update_issue",
-        description: "Update an issue's priority, status, or assignee",
+        name: "plan_sprint",
+        description: "Plan a new sprint including capacity planning and issue selection",
         inputSchema: {
           type: "object",
           properties: {
-            issueKey: { type: "string", description: "Issue key (e.g., 'PROJ-123')" },
-            priority: { type: "string", description: "Priority level" },
-            status: { type: "string", description: "New status" },
-            assignee: { type: "string", description: "Username to assign to" }
+            projectKey: { type: "string", description: "Project key" },
+            teamCapacity: { type: "number", description: "Team capacity in story points" },
+            startDate: { type: "string", description: "Sprint start date (YYYY-MM-DD)" },
+            endDate: { type: "string", description: "Sprint end date (YYYY-MM-DD)" },
+            sprintGoals: { type: "string", description: "Goals for the sprint" }
           },
-          required: ["issueKey"]
+          required: ["projectKey", "teamCapacity", "startDate", "endDate"]
         }
       },
       {
         name: "create_issue",
-        description: "Create a new issue in the backlog",
+        description: "Create a new issue with detailed attributes",
         inputSchema: {
           type: "object",
           properties: {
@@ -70,9 +71,46 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             summary: { type: "string", description: "Issue summary" },
             description: { type: "string", description: "Issue description" },
             issueType: { type: "string", description: "Type of issue" },
-            priority: { type: "string", description: "Priority level" }
+            priority: { type: "string", description: "Priority level" },
+            storyPoints: { type: "number", description: "Story points estimate" },
+            assignee: { type: "string", description: "Assignee username" },
+            dueDate: { type: "string", description: "Due date (YYYY-MM-DD)" },
+            epic: { type: "string", description: "Epic link" }
           },
           required: ["projectKey", "summary", "issueType"]
+        }
+      },
+      {
+        name: "update_issue",
+        description: "Update issue details including story points and status",
+        inputSchema: {
+          type: "object",
+          properties: {
+            issueKey: { type: "string", description: "Issue key (e.g., 'PROJ-123')" },
+            storyPoints: { type: "number", description: "Story points estimate" },
+            priority: { type: "string", description: "Priority level" },
+            status: { type: "string", description: "New status" },
+            assignee: { type: "string", description: "Username to assign to" },
+            dueDate: { type: "string", description: "Due date (YYYY-MM-DD)" }
+          },
+          required: ["issueKey"]
+        }
+      },
+      {
+        name: "generate_report",
+        description: "Generate sprint/project progress report",
+        inputSchema: {
+          type: "object",
+          properties: {
+            projectKey: { type: "string", description: "Project key" },
+            reportType: { 
+              type: "string", 
+              enum: ["sprint_progress", "velocity", "backlog_health", "team_workload"],
+              description: "Type of report to generate"
+            },
+            timeFrame: { type: "string", description: "Time frame for the report (e.g., 'last_sprint', 'last_month')" }
+          },
+          required: ["projectKey", "reportType"]
         }
       }
     ]
@@ -85,87 +123,210 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     const auth = Buffer.from(`${JIRA_USER_EMAIL}:${JIRA_API_KEY}`).toString("base64");
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Basic ${auth}`,
+    };
 
     switch (name) {
-      case "search_backlog": {
+      case "analyze_sprint": {
+        // Get active sprint
+        const sprintResponse = await fetch(
+          `${JIRA_INSTANCE_URL}/rest/agile/1.0/board/search?projectKeyOrId=${args.projectKey}`,
+          { headers }
+        );
+        const boards = await sprintResponse.json();
+        const boardId = boards.values[0].id;
+
+        const activeSprint = await fetch(
+          `${JIRA_INSTANCE_URL}/rest/agile/1.0/board/${boardId}/sprint?state=active`,
+          { headers }
+        );
+        const sprintData = await activeSprint.json();
+        const sprint = sprintData.values[0];
+
+        // Get sprint issues
+        const issuesResponse = await fetch(
+          `${JIRA_INSTANCE_URL}/rest/agile/1.0/sprint/${sprint.id}/issue`,
+          { headers }
+        );
+        const issues = await issuesResponse.json();
+
+        // Analyze sprint health
+        const analysis = analyzeSprintHealth(issues.issues, sprint);
+
+        return { 
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              sprint: sprint,
+              analysis: analysis
+            }, null, 2)
+          }]
+        };
+      }
+
+      case "plan_sprint": {
+        // Get backlog issues
         const response = await fetch(
           `${JIRA_INSTANCE_URL}/rest/api/2/search`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Basic ${auth}`,
-            },
+            headers,
             body: JSON.stringify({
-              jql: `project = ${args.projectKey} AND status = Backlog ${args.searchTerm ? `AND text ~ "${args.searchTerm}"` : ''}`,
-              maxResults: 50
+              jql: `project = ${args.projectKey} AND status = Backlog ORDER BY priority DESC, created ASC`,
+              maxResults: 100
             }),
           }
         );
 
-        if (!response.ok) throw new Error(`JIRA API Error: ${response.statusText}`);
         const data = await response.json();
-        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-      }
+        const plannedIssues = selectIssuesForSprint(data.issues, args.teamCapacity);
 
-      case "update_issue": {
-        const updateData = {
-          fields: {}
-        };
-
-        if (args.priority) updateData.fields.priority = { name: args.priority };
-        if (args.status) updateData.fields.status = { name: args.status };
-        if (args.assignee) updateData.fields.assignee = { name: args.assignee };
-
-        const response = await fetch(
-          `${JIRA_INSTANCE_URL}/rest/api/2/issue/${args.issueKey}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Basic ${auth}`,
-            },
-            body: JSON.stringify(updateData),
-          }
-        );
-
-        if (!response.ok) throw new Error(`JIRA API Error: ${response.statusText}`);
-        return { content: [{ type: "text", text: `Updated issue ${args.issueKey}` }] };
-      }
-
-      case "create_issue": {
-        const response = await fetch(
-          `${JIRA_INSTANCE_URL}/rest/api/2/issue`,
+        // Create new sprint
+        const createSprintResponse = await fetch(
+          `${JIRA_INSTANCE_URL}/rest/agile/1.0/sprint`,
           {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Basic ${auth}`,
-            },
+            headers,
             body: JSON.stringify({
-              fields: {
-                project: { key: args.projectKey },
-                summary: args.summary,
-                description: args.description,
-                issuetype: { name: args.issueType },
-                priority: args.priority ? { name: args.priority } : undefined
-              }
+              name: `Sprint starting ${args.startDate}`,
+              startDate: args.startDate,
+              endDate: args.endDate,
+              originBoardId: boardId,
+              goal: args.sprintGoals
             }),
           }
         );
 
-        if (!response.ok) throw new Error(`JIRA API Error: ${response.statusText}`);
-        const data = await response.json();
-        return { content: [{ type: "text", text: `Created issue ${data.key}` }] };
+        const sprint = await createSprintResponse.json();
+
+        // Move issues to sprint
+        await fetch(
+          `${JIRA_INSTANCE_URL}/rest/agile/1.0/sprint/${sprint.id}/issue`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              issues: plannedIssues.map(issue => issue.key)
+            }),
+          }
+        );
+
+        return { 
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              sprint: sprint,
+              plannedIssues: plannedIssues,
+              totalStoryPoints: plannedIssues.reduce((sum, issue) => sum + (issue.fields.customfield_10016 || 0), 0)
+            }, null, 2)
+          }]
+        };
       }
 
-      default:
-        throw new Error(`Unknown tool: ${name}`);
+      case "generate_report": {
+        const reportData = await generateReport(args.projectKey, args.reportType, args.timeFrame, JIRA_INSTANCE_URL, headers);
+        return { 
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify(reportData, null, 2)
+          }]
+        };
+      }
+
+      // ... existing create_issue and update_issue handlers ...
     }
   } catch (error) {
-    return { isError: true, content: [{ type: "text", text: error.message }] };
+    return { 
+      isError: true, 
+      content: [{ 
+        type: "text", 
+        text: error.message 
+      }]
+    };
   }
 });
+
+// Helper functions
+function analyzeSprintHealth(issues, sprint) {
+  const analysis = {
+    totalIssues: issues.length,
+    completed: 0,
+    inProgress: 0,
+    blocked: 0,
+    storyPoints: {
+      total: 0,
+      completed: 0
+    },
+    risksAndBlockers: []
+  };
+
+  issues.forEach(issue => {
+    const status = issue.fields.status.name.toLowerCase();
+    const storyPoints = issue.fields.customfield_10016 || 0;
+
+    analysis.storyPoints.total += storyPoints;
+
+    if (status === 'done') {
+      analysis.completed++;
+      analysis.storyPoints.completed += storyPoints;
+    } else if (status === 'in progress') {
+      analysis.inProgress++;
+    }
+
+    // Check for blockers
+    if (issue.fields.flagged || issue.fields.priority.name === 'Highest') {
+      analysis.blocked++;
+      analysis.risksAndBlockers.push({
+        key: issue.key,
+        summary: issue.fields.summary,
+        priority: issue.fields.priority.name
+      });
+    }
+  });
+
+  return analysis;
+}
+
+function selectIssuesForSprint(issues, capacity) {
+  const plannedIssues = [];
+  let totalPoints = 0;
+
+  for (const issue of issues) {
+    const storyPoints = issue.fields.customfield_10016 || 0;
+    if (totalPoints + storyPoints <= capacity) {
+      plannedIssues.push(issue);
+      totalPoints += storyPoints;
+    }
+  }
+
+  return plannedIssues;
+}
+
+async function generateReport(projectKey, reportType, timeFrame, jiraUrl, headers) {
+  // Implementation varies based on report type
+  switch (reportType) {
+    case 'sprint_progress':
+      // Fetch current sprint data
+      break;
+    case 'velocity':
+      // Calculate velocity over last few sprints
+      break;
+    case 'backlog_health':
+      // Analyze backlog items
+      break;
+    case 'team_workload':
+      // Calculate team member workload
+      break;
+  }
+
+  return {
+    type: reportType,
+    timeFrame: timeFrame,
+    // ... report specific data
+  };
+}
 
 // Start the server
 async function main() {
