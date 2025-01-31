@@ -1,5 +1,7 @@
 # MCP Jira Integration
 
+[![smithery badge](https://smithery.ai/badge/@Warzuponus/jira)](https://smithery.ai/server/@Warzuponus/jira)
+
 This project integrates Claude AI with Jira to automate and enhance project management tasks.
 
 ## Features
@@ -102,3 +104,4 @@ This MCP implementation is designed to work with AI assistants that support the 
 MIT License - see LICENSE file`,
   `message`: `Update README to reflect current functionality`
 }
+
