@@ -1,0 +1,33 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - jiraUrl
+      - jiraUsername
+      - jiraApiToken
+      - projectKey
+      - apiKey
+    properties:
+      jiraUrl:
+        type: string
+        description: The URL of your Jira instance.
+      jiraUsername:
+        type: string
+        description: Your Jira account email.
+      jiraApiToken:
+        type: string
+        description: Your Jira API token.
+      projectKey:
+        type: string
+        description: The Jira project key.
+      apiKey:
+        type: string
+        description: A secure API key for MCP authentication.
+  commandFunction:
+    # A function that produces the CLI command to start the MCP on stdio.
+    |-
+    (config) => ({ command: 'uvicorn', args: ['src.mcp_jira.server:app', '--host', '0.0.0.0', '--port', '8000'], env: { JIRA_URL: config.jiraUrl, JIRA_USERNAME: config.jiraUsername, JIRA_API_TOKEN: config.jiraApiToken, PROJECT_KEY: config.projectKey, API_KEY: config.apiKey } })
