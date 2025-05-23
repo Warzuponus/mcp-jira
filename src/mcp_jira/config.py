@@ -18,17 +18,11 @@ class Settings(BaseSettings):
     jira_username: str
     jira_api_token: SecretStr
     project_key: str
-    default_board_id: int
+    default_board_id: Optional[int] = None
 
     # Application Settings
-    api_key: SecretStr
     debug_mode: bool = False
     log_level: str = "INFO"
-    
-    # Server Configuration
-    host: str = "0.0.0.0"
-    port: int = 8000
-    workers: int = 1
     
     # Sprint Defaults
     default_sprint_length: int = 14  # days
@@ -39,16 +33,6 @@ class Settings(BaseSettings):
     jira_request_timeout: int = 30  # seconds
     cache_ttl: int = 300  # seconds
     max_concurrent_requests: int = 10
-    
-    # Metrics Configuration
-    velocity_window: int = 3  # Number of sprints to consider for velocity
-    risk_threshold_high: float = 0.8
-    risk_threshold_medium: float = 0.5
-    
-    # Feature Flags
-    enable_workload_balancing: bool = True
-    enable_risk_analysis: bool = True
-    enable_automated_planning: bool = True
     
     class Config:
         """Pydantic configuration"""
@@ -67,45 +51,18 @@ class Settings(BaseSettings):
 
     @validator("jira_url")
     def validate_jira_url(cls, v: HttpUrl) -> HttpUrl:
-        """Ensure Jira URL ends with /rest/api/2"""
-        if not str(v).endswith("/"):
-            v = HttpUrl(str(v) + "/", scheme=v.scheme)
-        return v
-
-class DevelopmentSettings(Settings):
-    """Development environment settings"""
-    class Config:
-        env_prefix = "DEV_"
-
-class ProductionSettings(Settings):
-    """Production environment settings"""
-    debug_mode: bool = False
-    
-    class Config:
-        env_prefix = "PROD_"
-
-class TestSettings(Settings):
-    """Test environment settings"""
-    debug_mode: bool = True
-    
-    class Config:
-        env_prefix = "TEST_"
+        """Ensure Jira URL is properly formatted"""
+        url_str = str(v)
+        if not url_str.endswith("/"):
+            url_str += "/"
+        return HttpUrl(url_str, scheme=v.scheme)
 
 @lru_cache()
 def get_settings() -> Settings:
     """
-    Get the appropriate settings based on the environment.
-    Uses LRU cache to avoid reading environment variables multiple times.
+    Get settings with LRU cache to avoid reading environment variables multiple times.
     """
-    environment = os.getenv("ENVIRONMENT", "development").lower()
-    settings_map = {
-        "development": DevelopmentSettings,
-        "production": ProductionSettings,
-        "test": TestSettings
-    }
-    
-    settings_class = settings_map.get(environment, Settings)
-    return settings_class()
+    return Settings()
 
 def initialize_logging(settings: Settings) -> None:
     """Initialize logging configuration"""
@@ -130,19 +87,8 @@ PROJECT_KEY=PROJ
 DEFAULT_BOARD_ID=123
 
 # Application Settings
-API_KEY=your_secure_api_key
 DEBUG_MODE=false
 LOG_LEVEL=INFO
-
-# Server Configuration
-HOST=0.0.0.0
-PORT=8000
-WORKERS=1
-
-# Feature Flags
-ENABLE_WORKLOAD_BALANCING=true
-ENABLE_RISK_ANALYSIS=true
-ENABLE_AUTOMATED_PLANNING=true
 """
 
 def generate_env_template() -> str:

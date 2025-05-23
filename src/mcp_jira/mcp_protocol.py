@@ -15,8 +15,6 @@ from .types import (
     IssueType, Priority, Risk
 )
 from .jira_client import JiraClient
-from .scrum_master import ScrumMaster
-from .auth import TokenAuth
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +41,6 @@ class MCPContext(BaseModel):
     user_id: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    api_key: str  # Add API key to context
 
 class MCPRequest(BaseModel):
     """MCP Request Structure"""
@@ -64,10 +61,8 @@ class MCPProtocolHandler:
     Main handler for MCP protocol implementation.
     Manages resources, functions, and request processing.
     """
-    def __init__(self, jira_client: JiraClient, scrum_master: ScrumMaster, auth_handler: TokenAuth):
+    def __init__(self, jira_client: JiraClient):
         self.jira = jira_client
-        self.scrum_master = scrum_master
-        self.auth_handler = auth_handler
         self.functions: Dict[str, MCPFunction] = {}
         self._register_core_functions()
 
@@ -93,44 +88,14 @@ class MCPProtocolHandler:
             )
         )
 
-        self.register_function(
-            MCPFunction(
-                name="plan_sprint",
-                description="Plan a sprint with automated workload balancing",
-                resource_type=MCPResourceType.SPRINT,
-                parameters={
-                    "sprint_id": {"type": "integer", "required": True},
-                    "target_velocity": {"type": "number", "required": True},
-                    "team_members": {"type": "array", "items": {"type": "string"}}
-                },
-                returns={
-                    "recommendations": {"type": "array", "items": {"type": "string"}}
-                },
-                handler="handle_plan_sprint"
-            )
-        )
-
-        # Add more core functions...
-
     def register_function(self, function: MCPFunction):
         """Register a new MCP function"""
         self.functions[function.name] = function
         logger.info(f"Registered MCP function: {function.name}")
 
-        async def process_request(self, request: MCPRequest) -> MCPResponse:
+    async def process_request(self, request: MCPRequest) -> MCPResponse:
         """Process an MCP request"""
         try:
-            # Verify API key
-            try:
-                await self.auth_handler.verify_token(request.context.api_key)
-            except Exception as auth_error:
-                return MCPResponse(
-                    status="error",
-                    error="Authentication failed: Invalid API key",
-                    context=request.context
-                )
-
-            # Rest of the validation and processing remains the same
             if request.function not in self.functions:
                 return MCPResponse(
                     status="error",
@@ -186,19 +151,6 @@ class MCPProtocolHandler:
             assignee=parameters.get("assignee")
         )
         return {"issue_key": issue_key}
-
-    async def handle_plan_sprint(
-        self, 
-        parameters: Dict[str, Any], 
-        context: MCPContext
-    ) -> Dict[str, Any]:
-        """Handle plan_sprint function"""
-        recommendations = await self.scrum_master.plan_sprint(
-            sprint_id=parameters["sprint_id"],
-            target_velocity=parameters["target_velocity"],
-            team_members=parameters["team_members"]
-        )
-        return {"recommendations": recommendations}
 
     # Resource handlers
     async def get_resource(
