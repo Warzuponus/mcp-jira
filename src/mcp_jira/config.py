@@ -3,7 +3,8 @@ Configuration management for MCP Jira.
 Handles environment variables, settings validation, and configuration defaults.
 """
 
-from pydantic import BaseSettings, HttpUrl, SecretStr, validator
+from pydantic import HttpUrl, SecretStr, field_validator
+from pydantic_settings import BaseSettings
 from typing import Optional
 import os
 from functools import lru_cache
@@ -40,7 +41,8 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = False
 
-    @validator("log_level")
+    @field_validator("log_level")
+    @classmethod
     def validate_log_level(cls, v: str) -> str:
         """Validate log level is a valid Python logging level"""
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -49,13 +51,14 @@ class Settings(BaseSettings):
             raise ValueError(f"Log level must be one of {valid_levels}")
         return upper_v
 
-    @validator("jira_url")
+    @field_validator("jira_url")
+    @classmethod
     def validate_jira_url(cls, v: HttpUrl) -> HttpUrl:
         """Ensure Jira URL is properly formatted"""
         url_str = str(v)
         if not url_str.endswith("/"):
             url_str += "/"
-        return HttpUrl(url_str, scheme=v.scheme)
+        return HttpUrl(url_str)
 
 @lru_cache()
 def get_settings() -> Settings:

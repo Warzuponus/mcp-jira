@@ -11,7 +11,7 @@ Get your MCP Jira server running in 5 minutes!
 ## Step 1: Install
 
 ```bash
-cd mcp-jira-implementation/mcp-jira
+cd mcp-jira
 pip install -e .
 ```
 
@@ -59,7 +59,7 @@ Add to your `claude_desktop_config.json`:
     "mcp-jira": {
       "command": "python",
       "args": ["-m", "mcp_jira"],
-      "cwd": "/path/to/mcp-jira-implementation/mcp-jira"
+      "cwd": "/path/to/mcp-jira"
     }
   }
 }

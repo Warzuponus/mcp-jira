@@ -3,12 +3,26 @@ Tests for the Jira client implementation.
 """
 
 import pytest
+from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from mcp_jira.jira_client import JiraClient
 from mcp_jira.types import IssueType, Priority
 
 @pytest.mark.asyncio
-async def test_create_issue(mock_jira_client):
+@patch('aiohttp.ClientSession')
+async def test_create_issue(mock_session_class, mock_jira_client):
     """Test creating a Jira issue"""
+    # Set up mock session
+    mock_session = MagicMock()
+    mock_session_class.return_value.__aenter__.return_value = mock_session
+    mock_session_class.return_value.__aexit__.return_value = None
+
+    # Mock the POST response
+    mock_response = MagicMock()
+    mock_response.status = 201
+    mock_response.json = AsyncMock(return_value={"key": "TEST-1"})
+    mock_session.post.return_value.__aenter__.return_value = mock_response
+    mock_session.post.return_value.__aexit__.return_value = None
+
     result = await mock_jira_client.create_issue(
         summary="Test Issue",
         description="Test Description",

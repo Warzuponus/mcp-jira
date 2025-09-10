@@ -15,7 +15,7 @@ setup(
     description="Model Context Protocol server for Jira with project management capabilities",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/your-username/mcp-jira-implementation",
+    url="https://github.com/warzuponus/mcp-jira",
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     classifiers=[
@@ -36,6 +36,7 @@ setup(
         "jira>=3.5.1",
         "python-dotenv>=0.19.0",
         "pydantic>=2.0.0",
+        "pydantic-settings>=2.0.0",
         "aiohttp>=3.8.0",
     ],
     entry_points={

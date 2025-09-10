@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 class JiraClient:
     def __init__(self, settings: Settings):
-        self.base_url = settings.jira_url.rstrip('/')
+        self.base_url = str(settings.jira_url).rstrip('/')
         self.auth_header = self._create_auth_header(
-            settings.jira_username, 
+            settings.jira_username,
             settings.jira_api_token
         )
         self.project_key = settings.project_key

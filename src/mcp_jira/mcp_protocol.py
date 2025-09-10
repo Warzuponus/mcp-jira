@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional, Union, Callable
 from pydantic import BaseModel, Field
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .types import (
     Issue, Sprint, TeamMember, SprintStatus,
@@ -39,7 +39,7 @@ class MCPContext(BaseModel):
     """MCP Context Information"""
     conversation_id: str
     user_id: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 class MCPRequest(BaseModel):

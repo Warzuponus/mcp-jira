@@ -28,7 +28,7 @@ A simple Model Context Protocol (MCP) server for Jira that allows LLMs to act as
 
 1. **Clone and install**:
 ```bash
-cd mcp-jira-implementation/mcp-jira
+cd mcp-jira
 pip install -e .
 ```
 
