@@ -23,7 +23,7 @@ class JiraClient:
         self.base_url = str(settings.jira_url).rstrip('/')
         self.auth_header = self._create_auth_header(
             settings.jira_username,
-            settings.jira_api_token
+            settings.jira_api_token.get_secret_value()
         )
         self.project_key = settings.project_key
         self.board_id = settings.default_board_id
@@ -40,11 +40,14 @@ class JiraClient:
         components: Optional[List[str]] = None
     ) -> str:
         """Create a new Jira issue."""
+        # Convert plain text description to Atlassian Document Format (ADF)
+        adf_description = self._text_to_adf(description)
+
         data = {
             "fields": {
                 "project": {"key": self.project_key},
                 "summary": summary,
-                "description": description,
+                "description": adf_description,
                 "issuetype": {"name": issue_type.value},
                 "priority": {"name": priority.value}
             }
@@ -53,7 +56,7 @@ class JiraClient:
         if story_points:
             data["fields"]["customfield_10026"] = story_points  # Adjust field ID as needed
         if assignee:
-            data["fields"]["assignee"] = {"name": assignee}
+            data["fields"]["assignee"] = {"accountId": assignee}  # API v3 uses accountId
         if labels:
             data["fields"]["labels"] = labels
         if components:
@@ -61,7 +64,7 @@ class JiraClient:
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{self.base_url}/rest/api/2/issue",
+                f"{self.base_url}/rest/api/3/issue",
                 headers=self._get_headers(),
                 json=data
             ) as response:
@@ -118,15 +121,20 @@ class JiraClient:
         jql = f"assignee = {username} AND resolution = Unresolved"
         return await self.search_issues(jql)
 
-    async def search_issues(self, jql: str) -> List[Issue]:
-        """Search issues using JQL."""
+    async def search_issues(self, jql: str, max_results: int = 100) -> List[Issue]:
+        """Search issues using JQL (API v3)."""
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{self.base_url}/rest/api/2/search",
+                f"{self.base_url}/rest/api/3/search/jql",
                 headers=self._get_headers(),
                 json={
                     "jql": jql,
-                    "maxResults": 100
+                    "maxResults": max_results,
+                    "fields": [
+                        "summary", "description", "issuetype", "priority",
+                        "status", "assignee", "labels", "components",
+                        "created", "updated", "customfield_10026"
+                    ]
                 }
             ) as response:
                 if response.status == 200:
@@ -140,7 +148,7 @@ class JiraClient:
         """Get the change history of an issue."""
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"{self.base_url}/rest/api/2/issue/{issue_key}/changelog",
+                f"{self.base_url}/rest/api/3/issue/{issue_key}/changelog",
                 headers=self._get_headers()
             ) as response:
                 if response.status == 200:
@@ -159,6 +167,124 @@ class JiraClient:
             "Accept": "application/json"
         }
 
+    def _text_to_adf(self, text: str) -> Dict[str, Any]:
+        """Convert plain text/markdown to Atlassian Document Format (ADF)."""
+        if not text:
+            return {
+                "type": "doc",
+                "version": 1,
+                "content": []
+            }
+
+        content = []
+        lines = text.split('\n')
+        i = 0
+
+        while i < len(lines):
+            line = lines[i]
+
+            # Handle headers
+            if line.startswith('### '):
+                content.append({
+                    "type": "heading",
+                    "attrs": {"level": 3},
+                    "content": [{"type": "text", "text": line[4:]}]
+                })
+            elif line.startswith('## '):
+                content.append({
+                    "type": "heading",
+                    "attrs": {"level": 2},
+                    "content": [{"type": "text", "text": line[3:]}]
+                })
+            elif line.startswith('# '):
+                content.append({
+                    "type": "heading",
+                    "attrs": {"level": 1},
+                    "content": [{"type": "text", "text": line[2:]}]
+                })
+            # Handle bullet points
+            elif line.startswith('- ') or line.startswith('* '):
+                # Collect all consecutive bullet points
+                bullet_items = []
+                while i < len(lines) and (lines[i].startswith('- ') or lines[i].startswith('* ')):
+                    bullet_text = lines[i][2:]
+                    bullet_items.append({
+                        "type": "listItem",
+                        "content": [{
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": bullet_text}]
+                        }]
+                    })
+                    i += 1
+                content.append({
+                    "type": "bulletList",
+                    "content": bullet_items
+                })
+                continue  # Skip the i += 1 at the end
+            # Handle empty lines (skip)
+            elif line.strip() == '':
+                pass
+            # Regular paragraph
+            else:
+                content.append({
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": line}]
+                })
+
+            i += 1
+
+        return {
+            "type": "doc",
+            "version": 1,
+            "content": content
+        }
+
+    def _adf_to_text(self, adf: Dict[str, Any]) -> str:
+        """Convert Atlassian Document Format (ADF) to plain text."""
+        if not adf or not isinstance(adf, dict):
+            return ""
+
+        def extract_text(node: Dict[str, Any]) -> str:
+            """Recursively extract text from ADF nodes."""
+            if not isinstance(node, dict):
+                return ""
+
+            text_parts = []
+            node_type = node.get("type", "")
+
+            # Handle text nodes
+            if node_type == "text":
+                return node.get("text", "")
+
+            # Handle heading nodes
+            if node_type == "heading":
+                level = node.get("attrs", {}).get("level", 1)
+                prefix = "#" * level + " "
+                content_text = "".join(extract_text(c) for c in node.get("content", []))
+                return prefix + content_text + "\n"
+
+            # Handle paragraph nodes
+            if node_type == "paragraph":
+                content_text = "".join(extract_text(c) for c in node.get("content", []))
+                return content_text + "\n"
+
+            # Handle list items
+            if node_type == "listItem":
+                content_text = "".join(extract_text(c) for c in node.get("content", []))
+                return "- " + content_text.strip() + "\n"
+
+            # Handle bullet lists
+            if node_type == "bulletList":
+                return "".join(extract_text(c) for c in node.get("content", []))
+
+            # Handle other nodes with content
+            if "content" in node:
+                return "".join(extract_text(c) for c in node.get("content", []))
+
+            return ""
+
+        return extract_text(adf).strip()
+
     def _create_auth_header(self, username: str, api_token: str) -> str:
         """Create base64 encoded auth header."""
         auth_string = f"{username}:{api_token}"
@@ -166,21 +292,57 @@ class JiraClient:
 
     def _convert_to_issue(self, data: Dict[str, Any]) -> Issue:
         """Convert Jira API response to Issue object."""
-        fields = data["fields"]
+        fields = data.get("fields", {})
+
+        # Handle issue type - try to get name, fallback to "Task"
+        issue_type_data = fields.get("issuetype", {})
+        issue_type_name = issue_type_data.get("name", "Task") if issue_type_data else "Task"
+        try:
+            issue_type = IssueType(issue_type_name)
+        except ValueError:
+            issue_type = IssueType.TASK
+
+        # Handle priority - try to get name, fallback to "Medium"
+        priority_data = fields.get("priority", {})
+        priority_name = priority_data.get("name", "Medium") if priority_data else "Medium"
+        try:
+            priority = Priority(priority_name)
+        except ValueError:
+            priority = Priority.MEDIUM
+
+        # Handle status - try to get name, fallback to "To Do"
+        status_data = fields.get("status", {})
+        status_name = status_data.get("name", "To Do") if status_data else "To Do"
+        try:
+            status = IssueStatus(status_name)
+        except ValueError:
+            status = IssueStatus.TODO
+
+        # Handle dates
+        created_str = fields.get("created")
+        updated_str = fields.get("updated")
+        created_at = datetime.fromisoformat(created_str.rstrip('Z')) if created_str else datetime.now()
+        updated_at = datetime.fromisoformat(updated_str.rstrip('Z')) if updated_str else datetime.now()
+
+        # Convert ADF description to plain text
+        description = fields.get("description")
+        if isinstance(description, dict):
+            description = self._adf_to_text(description)
+
         return Issue(
-            key=data["key"],
-            summary=fields["summary"],
-            description=fields.get("description"),
-            issue_type=IssueType(fields["issuetype"]["name"]),
-            priority=Priority(fields["priority"]["name"]),
-            status=IssueStatus(fields["status"]["name"]),
+            key=data.get("key", "UNKNOWN"),
+            summary=fields.get("summary", ""),
+            description=description,
+            issue_type=issue_type,
+            priority=priority,
+            status=status,
             assignee=self._convert_to_team_member(fields.get("assignee")) if fields.get("assignee") else None,
-            story_points=fields.get("customfield_10026"),  # Adjust field ID as needed
+            story_points=fields.get("customfield_10026"),
             labels=fields.get("labels", []),
             components=[c["name"] for c in fields.get("components", [])],
-            created_at=datetime.fromisoformat(fields["created"].rstrip('Z')),
-            updated_at=datetime.fromisoformat(fields["updated"].rstrip('Z')),
-            blocked_by=[],  # Would need to implement logic to determine blockers
+            created_at=created_at,
+            updated_at=updated_at,
+            blocked_by=[],
             blocks=[]
         )
 
@@ -198,9 +360,10 @@ class JiraClient:
     def _convert_to_team_member(self, data: Dict[str, Any]) -> TeamMember:
         """Convert Jira API response to TeamMember object."""
         return TeamMember(
-            username=data["name"],
-            display_name=data["displayName"],
-            email=data.get("emailAddress")
+            username=data.get("accountId", data.get("name", "")),
+            display_name=data.get("displayName", ""),
+            email=data.get("emailAddress"),
+            role=None
         )
 
     def _process_changelog(self, changelog: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
