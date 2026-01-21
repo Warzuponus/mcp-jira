@@ -5,6 +5,7 @@ Implements core project management functions following MCP specification.
 
 import asyncio
 import logging
+import sys
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -309,10 +310,23 @@ async def main():
     global jira_client
     
     # Initialize settings and Jira client
-    settings = get_settings()
-    jira_client = JiraClient(settings)
-    
-    logger.info("Starting MCP Jira server...")
+    try:
+        settings = get_settings()
+        
+        # Configure logging to stderr (since stdout is used for MCP protocol)
+        logging.basicConfig(
+            level=settings.log_level,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler(sys.stderr)]
+        )
+        
+        jira_client = JiraClient(settings)
+        print("Starting MCP Jira server...", file=sys.stderr)
+        print("Server is running! Configure your MCP client (like Claude Desktop) to use this server.", file=sys.stderr)
+        print("See QUICKSTART.md for connection instructions.", file=sys.stderr)
+    except Exception as e:
+        print(f"Failed to initialize: {e}", file=sys.stderr)
+        raise
     
     # Run the MCP server
     try:

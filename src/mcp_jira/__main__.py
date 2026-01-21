@@ -27,29 +27,52 @@ def setup_logging():
 
 def check_env_file():
     """Check if .env file exists and provide helpful guidance."""
-    env_path = Path(".env")
-    if not env_path.exists():
-        print("⚠️  No .env file found!")
-        print("Please create a .env file with your Jira configuration:")
-        print("")
-        print("JIRA_URL=https://your-domain.atlassian.net")
-        print("JIRA_USERNAME=your.email@domain.com")
-        print("JIRA_API_TOKEN=your_api_token")
-        print("PROJECT_KEY=PROJ")
-        print("DEFAULT_BOARD_ID=123")
-        print("")
-        print("You can copy .env.example to .env and edit it with your values.")
-        return False
-    return True
+    import os
+    # Try to find .env in current directory or project root
+    current_dir = Path(os.getcwd())
+    potential_paths = [
+        current_dir / ".env",
+        Path(__file__).parent.parent.parent / ".env",
+        Path("/Users/dford/Projects/mcp-jira/.env") # Fallback to absolute path
+    ]
+    
+    env_path = None
+    for path in potential_paths:
+        if path.exists():
+            env_path = path
+            break
+            
+    if not env_path:
+        print("⚠️  No .env file found!", file=sys.stderr)
+        print("Please create a .env file with your Jira configuration:", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("JIRA_URL=https://your-domain.atlassian.net", file=sys.stderr)
+        print("JIRA_USERNAME=your.email@domain.com", file=sys.stderr)
+        print("JIRA_API_TOKEN=your_api_token", file=sys.stderr)
+        print("PROJECT_KEY=PROJ", file=sys.stderr)
+        print("DEFAULT_BOARD_ID=123", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("You can copy .env.example to .env and edit it with your values.", file=sys.stderr)
+        return None
+    return env_path
 
 if __name__ == "__main__":
-    print("🚀 Starting MCP Jira Server...")
+    print("Starting MCP Jira Server...", file=sys.stderr)
+    
+    import os
+    print(f"DEBUG: CWD is {os.getcwd()}", file=sys.stderr)
+    print(f"DEBUG: Directory contents: {os.listdir()}", file=sys.stderr)
     
     setup_logging()
     logger = logging.getLogger(__name__)
     
-    if not check_env_file():
+    env_file = check_env_file()
+    if not env_file:
         sys.exit(1)
+        
+    from dotenv import load_dotenv
+    print(f"Loading environment from {env_file}", file=sys.stderr)
+    load_dotenv(env_file)
     
     try:
         logger.info("Initializing MCP Jira server...")
@@ -58,5 +81,5 @@ if __name__ == "__main__":
         logger.info("Server stopped by user")
     except Exception as e:
         logger.exception(f"Server failed to start: {e}")
-        print(f"❌ Error: {e}")
+        print(f"❌ Error: {e}", file=sys.stderr)
         sys.exit(1) 
