@@ -315,8 +315,12 @@ async def main():
     logger.info("Starting MCP Jira server...")
     
     # Run the MCP server
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(read_stream, write_stream, server.create_initialization_options())
+    finally:
+        if jira_client:
+            await jira_client.close()
 
 if __name__ == "__main__":
     asyncio.run(main())

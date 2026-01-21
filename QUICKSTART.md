@@ -40,6 +40,7 @@ PROJECT_KEY=PROJ
 1. Go to https://id.atlassian.com/manage-profile/security/api-tokens
 2. Click "Create API token"
 3. Copy the token to your `.env` file
+4. (Optional) If your Jira uses a different Story Points field ID, add `STORY_POINTS_FIELD=customfield_XXXXX` to `.env`.
 
 ## Step 4: Test the Server
 

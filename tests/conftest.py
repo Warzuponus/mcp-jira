@@ -48,28 +48,80 @@ def mock_response():
     return MockResponse
 
 @pytest.fixture
-def mock_jira_client(test_settings):
+def mock_jira_client(test_settings, mock_response):
     """Create a mock Jira client"""
     client = JiraClient(test_settings)
 
     # Mock the entire session to prevent HTTP calls
-    client._session = MagicMock()
+    client.session = MagicMock()
+    client.session.closed = False
 
     # Mock all HTTP methods to return successful responses
-    async def mock_get(*args, **kwargs):
-        # Mock sprint response
-        if "sprint" in str(args[0]):
-            return MagicMock(status=200, json=AsyncMock(return_value={
+    def mock_get(*args, **kwargs):
+        url = str(args[0])
+        
+        # Changelog
+        if "changelog" in url:
+            return mock_response(200, {
+                "values": [
+                    {
+                        "id": "10001",
+                        "author": {
+                            "displayName": "Test User",
+                            "accountId": "test_user"
+                        },
+                        "created": "2024-01-08T12:00:00.000Z",
+                        "items": [
+                            {
+                                "field": "status",
+                                "fieldtype": "jira",
+                                "from": "10000",
+                                "fromString": "To Do",
+                                "to": "3",
+                                "toString": "In Progress"
+                            }
+                        ]
+                    }
+                ]
+            })
+
+        # Sprint Issues (must check before generic sprint)
+        elif "sprint" in url and "issue" in url:
+            return mock_response(200, {
+                "issues": [{
+                    "key": "TEST-1",
+                    "fields": {
+                        "summary": "Test Issue",
+                        "description": "Test Description",
+                        "issuetype": {"name": "Story"},
+                        "priority": {"name": "High"},
+                        "status": {"name": "To Do"},
+                        "assignee": {
+                            "name": "test_user",
+                            "displayName": "Test User",
+                            "emailAddress": "test@example.com"
+                        },
+                        "created": "2024-01-08T10:00:00.000Z",
+                        "updated": "2024-01-08T10:00:00.000Z",
+                        "customfield_10026": 5
+                    }
+                }]
+            })
+
+        # Sprint details
+        elif "sprint" in url:
+            return mock_response(200, {
                 "id": 1,
                 "name": "Test Sprint",
                 "goal": "Test Goal",
-                "state": "active",
+                "state": "Active",
                 "startDate": "2024-01-08T00:00:00.000Z",
                 "endDate": "2024-01-22T00:00:00.000Z"
-            }))
-        # Mock issue response
-        elif "issue" in str(args[0]):
-            return MagicMock(status=200, json=AsyncMock(return_value={
+            })
+
+        # Issue details or search
+        elif "issue" in url:
+            return mock_response(200, {
                 "issues": [{
                     "key": "TEST-1",
                     "fields": {
@@ -88,15 +140,17 @@ def mock_jira_client(test_settings):
                         "customfield_10026": 5
                     }
                 }]
-            }))
+            })
+        
+        return mock_response(200, {})
 
-    async def mock_post(*args, **kwargs):
+    def mock_post(*args, **kwargs):
         # Mock issue creation
-        if "issue" in str(args[0]):
-            return MagicMock(status=201, json=AsyncMock(return_value={"key": "TEST-1"}))
+        if "issue" in str(args[0]) and "search" not in str(args[0]):
+            return mock_response(201, {"key": "TEST-1"})
         # Mock search
         else:
-            return MagicMock(status=200, json=AsyncMock(return_value={
+            return mock_response(200, {
                 "issues": [{
                     "key": "TEST-1",
                     "fields": {
@@ -115,10 +169,10 @@ def mock_jira_client(test_settings):
                         "customfield_10026": 5
                     }
                 }]
-            }))
+            })
 
-    client._session.get = AsyncMock(side_effect=mock_get)
-    client._session.post = AsyncMock(side_effect=mock_post)
+    client.session.get = MagicMock(side_effect=mock_get)
+    client.session.post = MagicMock(side_effect=mock_post)
 
     return client
 

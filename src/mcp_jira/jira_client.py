@@ -27,6 +27,24 @@ class JiraClient:
         )
         self.project_key = settings.project_key
         self.board_id = settings.default_board_id
+        self.story_points_field = settings.story_points_field
+        self.session: Optional[aiohttp.ClientSession] = None
+        self.timeout = aiohttp.ClientTimeout(total=settings.jira_request_timeout)
+
+    async def get_session(self) -> aiohttp.ClientSession:
+        """Get or create the aiohttp session."""
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession(
+                timeout=self.timeout,
+                headers=self._get_headers()
+            )
+        return self.session
+
+    async def close(self):
+        """Close the API client session."""
+        if self.session:
+            await self.session.close()
+            self.session = None
 
     async def create_issue(
         self,
@@ -54,7 +72,7 @@ class JiraClient:
         }
 
         if story_points:
-            data["fields"]["customfield_10026"] = story_points  # Adjust field ID as needed
+            data["fields"][self.story_points_field] = story_points
         if assignee:
             data["fields"]["assignee"] = {"accountId": assignee}  # API v3 uses accountId
         if labels:
@@ -62,32 +80,30 @@ class JiraClient:
         if components:
             data["fields"]["components"] = [{"name": c} for c in components]
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{self.base_url}/rest/api/3/issue",
-                headers=self._get_headers(),
-                json=data
-            ) as response:
-                if response.status == 201:
-                    result = await response.json()
-                    return result["key"]
-                else:
-                    error_data = await response.text()
-                    raise JiraError(f"Failed to create issue: {error_data}")
+        session = await self.get_session()
+        async with session.post(
+            f"{self.base_url}/rest/api/3/issue",
+            json=data
+        ) as response:
+            if response.status == 201:
+                result = await response.json()
+                return result["key"]
+            else:
+                error_data = await response.text()
+                raise JiraError(f"Failed to create issue: {error_data}")
 
     async def get_sprint(self, sprint_id: int) -> Sprint:
         """Get sprint details by ID."""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.base_url}/rest/agile/1.0/sprint/{sprint_id}",
-                headers=self._get_headers()
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._convert_to_sprint(data)
-                else:
-                    error_data = await response.text()
-                    raise JiraError(f"Failed to get sprint: {error_data}")
+        session = await self.get_session()
+        async with session.get(
+            f"{self.base_url}/rest/agile/1.0/sprint/{sprint_id}"
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                return self._convert_to_sprint(data)
+            else:
+                error_data = await response.text()
+                raise JiraError(f"Failed to get sprint: {error_data}")
 
     async def get_active_sprint(self) -> Optional[Sprint]:
         """Get the currently active sprint."""
@@ -99,17 +115,16 @@ class JiraClient:
 
     async def get_sprint_issues(self, sprint_id: int) -> List[Issue]:
         """Get all issues in a sprint."""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.base_url}/rest/agile/1.0/sprint/{sprint_id}/issue",
-                headers=self._get_headers()
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return [self._convert_to_issue(i) for i in data["issues"]]
-                else:
-                    error_data = await response.text()
-                    raise JiraError(f"Failed to get sprint issues: {error_data}")
+        session = await self.get_session()
+        async with session.get(
+            f"{self.base_url}/rest/agile/1.0/sprint/{sprint_id}/issue"
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                return [self._convert_to_issue(i) for i in data["issues"]]
+            else:
+                error_data = await response.text()
+                raise JiraError(f"Failed to get sprint issues: {error_data}")
 
     async def get_backlog_issues(self) -> List[Issue]:
         """Get all backlog issues."""
@@ -123,40 +138,38 @@ class JiraClient:
 
     async def search_issues(self, jql: str, max_results: int = 100) -> List[Issue]:
         """Search issues using JQL (API v3)."""
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{self.base_url}/rest/api/3/search/jql",
-                headers=self._get_headers(),
-                json={
-                    "jql": jql,
-                    "maxResults": max_results,
-                    "fields": [
-                        "summary", "description", "issuetype", "priority",
-                        "status", "assignee", "labels", "components",
-                        "created", "updated", "customfield_10026"
-                    ]
-                }
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return [self._convert_to_issue(i) for i in data["issues"]]
-                else:
-                    error_data = await response.text()
-                    raise JiraError(f"Failed to search issues: {error_data}")
+        session = await self.get_session()
+        async with session.post(
+            f"{self.base_url}/rest/api/3/search/jql",
+            json={
+                "jql": jql,
+                "maxResults": max_results,
+                "fields": [
+                    "summary", "description", "issuetype", "priority",
+                    "status", "assignee", "labels", "components",
+                    "created", "updated", self.story_points_field
+                ]
+            }
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                return [self._convert_to_issue(i) for i in data["issues"]]
+            else:
+                error_data = await response.text()
+                raise JiraError(f"Failed to search issues: {error_data}")
 
     async def get_issue_history(self, issue_key: str) -> List[Dict[str, Any]]:
         """Get the change history of an issue."""
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.base_url}/rest/api/3/issue/{issue_key}/changelog",
-                headers=self._get_headers()
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._process_changelog(data["values"])
-                else:
-                    error_data = await response.text()
-                    raise JiraError(f"Failed to get issue history: {error_data}")
+        session = await self.get_session()
+        async with session.get(
+            f"{self.base_url}/rest/api/3/issue/{issue_key}/changelog"
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                return self._process_changelog(data["values"])
+            else:
+                error_data = await response.text()
+                raise JiraError(f"Failed to get issue history: {error_data}")
 
     # Helper methods
     def _get_headers(self) -> Dict[str, str]:
@@ -337,7 +350,7 @@ class JiraClient:
             priority=priority,
             status=status,
             assignee=self._convert_to_team_member(fields.get("assignee")) if fields.get("assignee") else None,
-            story_points=fields.get("customfield_10026"),
+            story_points=fields.get(self.story_points_field),
             labels=fields.get("labels", []),
             components=[c["name"] for c in fields.get("components", [])],
             created_at=created_at,
@@ -387,15 +400,14 @@ class JiraClient:
     ) -> List[Sprint]:
         """Get all sprints for a board."""
         params = {"state": state.value} if state else {}
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"{self.base_url}/rest/agile/1.0/board/{board_id}/sprint",
-                headers=self._get_headers(),
-                params=params
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return [self._convert_to_sprint(s) for s in data["values"]]
-                else:
-                    error_data = await response.text()
-                    raise JiraError(f"Failed to get board sprints: {error_data}")
+        session = await self.get_session()
+        async with session.get(
+            f"{self.base_url}/rest/agile/1.0/board/{board_id}/sprint",
+            params=params
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                return [self._convert_to_sprint(s) for s in data["values"]]
+            else:
+                error_data = await response.text()
+                raise JiraError(f"Failed to get board sprints: {error_data}")

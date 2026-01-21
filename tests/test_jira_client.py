@@ -79,7 +79,7 @@ async def test_get_assigned_issues(mock_jira_client):
 async def test_error_handling(mock_jira_client, mock_response):
     """Test error handling"""
     # Mock error response
-    mock_jira_client._session.post = mock_response(500, {"error": "Test error"})
+    mock_jira_client.session.post = mock_response(500, {"error": "Test error"})
     
     with pytest.raises(Exception):
         await mock_jira_client.create_issue(

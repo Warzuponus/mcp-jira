@@ -93,6 +93,7 @@ The server follows the standard MCP protocol and works with any MCP-compatible c
 
 ### Optional Settings
 - `DEFAULT_BOARD_ID` - Default board for sprint operations
+- `STORY_POINTS_FIELD` - Custom field ID for Story Points (default: customfield_10026)
 - `DEBUG_MODE` - Enable debug logging (default: false)
 - `LOG_LEVEL` - Logging level (default: INFO)
 
