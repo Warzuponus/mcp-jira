@@ -62,6 +62,10 @@ async def list_tools() -> List[Tool]:
                     "assignee": {
                         "type": "string",
                         "description": "Username to assign the issue to (optional)"
+                    },
+                    "project_key": {
+                        "type": "string",
+                        "description": "Project key to create issue in (optional, defaults to config)"
                     }
                 },
                 "required": ["summary", "description", "issue_type", "priority"]
@@ -94,6 +98,10 @@ async def list_tools() -> List[Tool]:
                     "sprint_id": {
                         "type": "number",
                         "description": "Sprint ID to analyze (optional, defaults to active sprint)"
+                    },
+                    "board_id": {
+                        "type": "number",
+                        "description": "Board ID to find active sprint in (optional, defaults to config)"
                     }
                 }
             }
@@ -118,7 +126,12 @@ async def list_tools() -> List[Tool]:
             description="Generate daily standup report for the active sprint",
             inputSchema={
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "board_id": {
+                        "type": "number",
+                        "description": "Board ID to generate report for (optional, defaults to config)"
+                    }
+                }
             }
         )
     ]
@@ -156,7 +169,8 @@ async def handle_create_issue(args: Dict[str, Any]) -> List[TextContent]:
         issue_type=IssueType(args["issue_type"]),
         priority=Priority(args["priority"]),
         story_points=args.get("story_points"),
-        assignee=args.get("assignee")
+        assignee=args.get("assignee"),
+        project_key=args.get("project_key")
     )
     
     return [TextContent(
@@ -196,7 +210,8 @@ async def handle_sprint_status(args: Dict[str, Any]) -> List[TextContent]:
     if sprint_id:
         sprint = await jira_client.get_sprint(sprint_id)
     else:
-        sprint = await jira_client.get_active_sprint()
+        # Pass board_id if provided
+        sprint = await jira_client.get_active_sprint(board_id=args.get("board_id"))
         if not sprint:
             return [TextContent(type="text", text="No active sprint found.")]
     
@@ -256,7 +271,8 @@ async def handle_team_workload(args: Dict[str, Any]) -> List[TextContent]:
 
 async def handle_standup_report(args: Dict[str, Any]) -> List[TextContent]:
     """Handle generate_standup_report tool call."""
-    active_sprint = await jira_client.get_active_sprint()
+    # Pass board_id if provided
+    active_sprint = await jira_client.get_active_sprint(board_id=args.get("board_id"))
     if not active_sprint:
         return [TextContent(type="text", text="No active sprint found for standup report.")]
     

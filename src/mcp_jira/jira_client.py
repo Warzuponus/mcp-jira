@@ -55,15 +55,19 @@ class JiraClient:
         story_points: Optional[float] = None,
         assignee: Optional[str] = None,
         labels: Optional[List[str]] = None,
-        components: Optional[List[str]] = None
+        components: Optional[List[str]] = None,
+        project_key: Optional[str] = None
     ) -> str:
         """Create a new Jira issue."""
         # Convert plain text description to Atlassian Document Format (ADF)
         adf_description = self._text_to_adf(description)
 
+        # Use provided project key or fall back to default
+        target_project = project_key or self.project_key
+
         data = {
             "fields": {
-                "project": {"key": self.project_key},
+                "project": {"key": target_project},
                 "summary": summary,
                 "description": adf_description,
                 "issuetype": {"name": issue_type.value},
@@ -105,10 +109,15 @@ class JiraClient:
                 error_data = await response.text()
                 raise JiraError(f"Failed to get sprint: {error_data}")
 
-    async def get_active_sprint(self) -> Optional[Sprint]:
+    async def get_active_sprint(self, board_id: Optional[int] = None) -> Optional[Sprint]:
         """Get the currently active sprint."""
+        target_board = board_id or self.board_id
+        if not target_board:
+            # If no board provided and no default, we can't find sprint
+            return None
+            
         sprints = await self._get_board_sprints(
-            self.board_id, 
+            target_board, 
             state=SprintStatus.ACTIVE
         )
         return sprints[0] if sprints else None
@@ -126,9 +135,10 @@ class JiraClient:
                 error_data = await response.text()
                 raise JiraError(f"Failed to get sprint issues: {error_data}")
 
-    async def get_backlog_issues(self) -> List[Issue]:
+    async def get_backlog_issues(self, project_key: Optional[str] = None) -> List[Issue]:
         """Get all backlog issues."""
-        jql = f"project = {self.project_key} AND sprint is EMPTY ORDER BY Rank ASC"
+        target_project = project_key or self.project_key
+        jql = f"project = {target_project} AND sprint is EMPTY ORDER BY Rank ASC"
         return await self.search_issues(jql)
 
     async def get_assigned_issues(self, username: str) -> List[Issue]:

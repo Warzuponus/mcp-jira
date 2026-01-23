@@ -12,6 +12,7 @@ A simple Model Context Protocol (MCP) server for Jira that allows LLMs to act as
 - **generate_standup_report** - Generate daily standup reports automatically
 
 ### Project Management Capabilities
+- **Multi-Project Support**: Work with multiple projects by specifying project keys dynamically
 - Sprint progress tracking with visual indicators
 - Team workload analysis and capacity planning
 - Automated daily standup report generation
@@ -89,10 +90,10 @@ The server follows the standard MCP protocol and works with any MCP-compatible c
 - `JIRA_URL` - Your Jira instance URL
 - `JIRA_USERNAME` - Your Jira username/email
 - `JIRA_API_TOKEN` - Your Jira API token
-- `PROJECT_KEY` - Default project key for operations
+- `PROJECT_KEY` - Default project key for operations (can be overridden per request)
 
 ### Optional Settings
-- `DEFAULT_BOARD_ID` - Default board for sprint operations
+- `DEFAULT_BOARD_ID` - Default board for sprint operations (can be overridden per request)
 - `STORY_POINTS_FIELD` - Custom field ID for Story Points (default: customfield_10026)
 - `DEBUG_MODE` - Enable debug logging (default: false)
 - `LOG_LEVEL` - Logging level (default: INFO)
