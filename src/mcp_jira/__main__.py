@@ -32,8 +32,7 @@ def check_env_file():
     current_dir = Path(os.getcwd())
     potential_paths = [
         current_dir / ".env",
-        Path(__file__).parent.parent.parent / ".env",
-        Path("/Users/dford/Projects/mcp-jira/.env") # Fallback to absolute path
+        Path(__file__).parent.parent.parent / ".env"
     ]
     
     env_path = None
