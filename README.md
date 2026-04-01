@@ -1,13 +1,13 @@
 # MCP Jira Integration
 
-A simple Model Context Protocol (MCP) server for Jira that allows LLMs to act as project managers and personal assistants for teams using Jira.
+A simple Model Context Protocol (MCP) server for Jira that allows LLMs to act as project managers and personal assistants for teams using Jira. Built on the Jira REST API v3.
 
 ## Features
 
 ### Core MCP Tools
-- **create_issue** - Create new Jira issues with proper formatting
-- **search_issues** - Search issues using JQL with smart formatting
-- **get_sprint_status** - Get comprehensive sprint progress reports
+- **create_issue** - Create new Jira issues with proper formatting and ADF descriptions
+- **search_issues** - Search issues using JQL with smart formatting and pagination
+- **get_sprint_status** - Get comprehensive sprint progress reports with metrics
 - **get_team_workload** - Analyze team member workloads and capacity
 - **generate_standup_report** - Generate daily standup reports automatically
 
@@ -19,10 +19,16 @@ A simple Model Context Protocol (MCP) server for Jira that allows LLMs to act as
 - Issue creation with proper prioritization
 - Smart search and filtering of issues
 
+### Reliability
+- Automatic retry with exponential backoff on rate limits (429) and transient errors (503)
+- Pagination for large result sets
+- Timezone-aware date handling
+- Graceful handling of custom Jira statuses and issue types
+
 ## Requirements
 
 - Python 3.8 or higher
-- Jira account with API token
+- Jira Cloud account with API token
 - MCP-compatible client (like Claude Desktop)
 
 ## Quick Setup
@@ -30,10 +36,17 @@ A simple Model Context Protocol (MCP) server for Jira that allows LLMs to act as
 1. **Clone and install**:
 ```bash
 cd mcp-jira
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 
 2. **Configure Jira credentials** in `.env`:
+```bash
+cp .env.example .env
+# Edit .env with your values
+```
+
 ```env
 JIRA_URL=https://your-domain.atlassian.net
 JIRA_USERNAME=your.email@domain.com
@@ -44,7 +57,7 @@ DEFAULT_BOARD_ID=123
 
 3. **Run the MCP server**:
 ```bash
-python -m mcp_jira.simple_mcp_server
+python -m mcp_jira
 ```
 
 ## Usage Examples
@@ -73,8 +86,8 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "mcp-jira": {
-      "command": "python",
-      "args": ["-m", "mcp_jira.simple_mcp_server"],
+      "command": "/path/to/mcp-jira/.venv/bin/python",
+      "args": ["-m", "mcp_jira"],
       "cwd": "/path/to/mcp-jira"
     }
   }
@@ -107,11 +120,14 @@ The server follows the standard MCP protocol and works with any MCP-compatible c
 
 ## Architecture
 
-This implementation prioritizes simplicity:
+This implementation prioritizes simplicity and reliability:
 - **Single MCP server file** - All tools in one place
 - **Standard MCP protocol** - Uses official MCP SDK
+- **Jira REST API v3** - Uses Atlassian Document Format (ADF) for descriptions
 - **Rich formatting** - Provides beautiful, readable reports
-- **Error handling** - Graceful handling of Jira API issues
+- **Retry with backoff** - Handles rate limits and transient Jira API errors automatically
+- **Pagination** - Fetches all results for large issue sets
+- **Error handling** - Graceful handling of Jira API issues and custom statuses
 - **Async support** - Fast and responsive operations
 
 ## Troubleshooting
@@ -133,11 +149,19 @@ This implementation prioritizes simplicity:
 ### Debug Mode
 Set `DEBUG_MODE=true` in your `.env` file for detailed logging.
 
-## Contributing
+## Development
 
 1. Fork the repository
-2. Make your changes
-3. Test with your Jira instance
+2. Set up a dev environment:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+3. Run tests:
+```bash
+python -m pytest tests/ -v
+```
 4. Submit a pull request
 
 ## License

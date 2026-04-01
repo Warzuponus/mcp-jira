@@ -12,6 +12,8 @@ Get your MCP Jira server running in 5 minutes!
 
 ```bash
 cd mcp-jira
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 
@@ -48,7 +50,7 @@ PROJECT_KEY=PROJ
 python -m mcp_jira
 ```
 
-You should see: `🚀 Starting MCP Jira Server...`
+You should see: `Starting MCP Jira Server...`
 
 ## Step 5: Connect to Claude Desktop
 
@@ -58,7 +60,7 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "mcp-jira": {
-      "command": "python",
+      "command": "/path/to/mcp-jira/.venv/bin/python",
       "args": ["-m", "mcp_jira"],
       "cwd": "/path/to/mcp-jira"
     }
