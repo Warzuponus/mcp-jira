@@ -5,9 +5,9 @@ Handles environment variables, settings validation, and configuration defaults.
 
 from pydantic import HttpUrl, SecretStr, field_validator
 from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
 from typing import Optional
 import os
-from functools import lru_cache
 
 class Settings(BaseSettings):
     """
@@ -35,12 +35,12 @@ class Settings(BaseSettings):
     cache_ttl: int = 300  # seconds
     max_concurrent_requests: int = 10
     
-    class Config:
-        """Pydantic configuration"""
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-        extra = "ignore" # Ignore extra fields in .env
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     @field_validator("log_level")
     @classmethod
@@ -61,10 +61,9 @@ class Settings(BaseSettings):
             url_str += "/"
         return HttpUrl(url_str)
 
-@lru_cache()
 def get_settings() -> Settings:
     """
-    Get settings with LRU cache to avoid reading environment variables multiple times.
+    Get application settings from environment variables.
     """
     return Settings()
 

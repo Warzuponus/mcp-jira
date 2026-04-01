@@ -9,21 +9,6 @@ import sys
 import logging
 from pathlib import Path
 
-from .simple_mcp_server import main
-from .config import get_settings, initialize_logging
-
-def setup_logging():
-    """Set up logging configuration."""
-    try:
-        settings = get_settings()
-        initialize_logging(settings)
-    except Exception as e:
-        # Fallback logging if config fails
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-        logging.getLogger(__name__).warning(f"Failed to load settings: {e}")
 
 def check_env_file():
     """Check if .env file exists and provide helpful guidance."""
@@ -34,13 +19,13 @@ def check_env_file():
         current_dir / ".env",
         Path(__file__).parent.parent.parent / ".env"
     ]
-    
+
     env_path = None
     for path in potential_paths:
         if path.exists():
             env_path = path
             break
-            
+
     if not env_path:
         print("⚠️  No .env file found!", file=sys.stderr)
         print("Please create a .env file with your Jira configuration:", file=sys.stderr)
@@ -57,22 +42,32 @@ def check_env_file():
 
 if __name__ == "__main__":
     print("Starting MCP Jira Server...", file=sys.stderr)
-    
-    import os
-    print(f"DEBUG: CWD is {os.getcwd()}", file=sys.stderr)
-    print(f"DEBUG: Directory contents: {os.listdir()}", file=sys.stderr)
-    
-    setup_logging()
-    logger = logging.getLogger(__name__)
-    
+
+    # 1) Locate and load .env BEFORE anything reads settings
     env_file = check_env_file()
     if not env_file:
         sys.exit(1)
-        
+
     from dotenv import load_dotenv
     print(f"Loading environment from {env_file}", file=sys.stderr)
     load_dotenv(env_file)
-    
+
+    # 2) Now it's safe to read settings and configure logging
+    from .config import get_settings, initialize_logging
+    from .simple_mcp_server import main
+
+    try:
+        settings = get_settings()
+        initialize_logging(settings)
+    except Exception as e:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        logging.getLogger(__name__).warning(f"Failed to load settings: {e}")
+
+    logger = logging.getLogger(__name__)
+
     try:
         logger.info("Initializing MCP Jira server...")
         asyncio.run(main())
@@ -81,4 +76,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.exception(f"Server failed to start: {e}")
         print(f"❌ Error: {e}", file=sys.stderr)
-        sys.exit(1) 
+        sys.exit(1)

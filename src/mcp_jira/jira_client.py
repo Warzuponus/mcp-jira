@@ -6,17 +6,22 @@ Handles all direct interactions with the Jira API.
 from typing import List, Optional, Dict, Any
 import aiohttp
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from base64 import b64encode
 
 from .types import (
-    Issue, Sprint, TeamMember, IssueType, 
+    Issue, Sprint, TeamMember, IssueType,
     Priority, IssueStatus, SprintStatus,
     JiraError
 )
 from .config import Settings
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 1.0  # seconds
+
 
 class JiraClient:
     def __init__(self, settings: Settings):
@@ -42,9 +47,62 @@ class JiraClient:
 
     async def close(self):
         """Close the API client session."""
-        if self.session:
+        if self.session and not self.session.closed:
             await self.session.close()
             self.session = None
+
+    # ------------------------------------------------------------------ #
+    #  Retry helper
+    # ------------------------------------------------------------------ #
+
+    async def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        **kwargs,
+    ) -> aiohttp.ClientResponse:
+        """
+        Execute an HTTP request with exponential backoff on transient errors.
+        Returns the response object (caller must check status).
+        """
+        import asyncio
+
+        session = await self.get_session()
+        last_error: Optional[Exception] = None
+
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = await session.request(method, url, **kwargs)
+
+                # Retry on 429 (rate limited) or 503 (service unavailable)
+                if response.status in (429, 503) and attempt < MAX_RETRIES - 1:
+                    retry_after = response.headers.get("Retry-After")
+                    delay = float(retry_after) if retry_after else RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        "Jira returned %d, retrying in %.1fs (attempt %d/%d)",
+                        response.status, delay, attempt + 1, MAX_RETRIES,
+                    )
+                    response.release()
+                    await asyncio.sleep(delay)
+                    continue
+
+                return response
+
+            except (aiohttp.ClientError, TimeoutError) as exc:
+                last_error = exc
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        "Request to %s failed (%s), retrying in %.1fs (attempt %d/%d)",
+                        url, exc, delay, attempt + 1, MAX_RETRIES,
+                    )
+                    await asyncio.sleep(delay)
+
+        raise JiraError(f"Request to {url} failed after {MAX_RETRIES} attempts: {last_error}")
+
+    # ------------------------------------------------------------------ #
+    #  Public API methods
+    # ------------------------------------------------------------------ #
 
     async def create_issue(
         self,
@@ -65,7 +123,7 @@ class JiraClient:
         # Use provided project key or fall back to default
         target_project = project_key or self.project_key
 
-        data = {
+        data: Dict[str, Any] = {
             "fields": {
                 "project": {"key": target_project},
                 "summary": summary,
@@ -84,30 +142,30 @@ class JiraClient:
         if components:
             data["fields"]["components"] = [{"name": c} for c in components]
 
-        session = await self.get_session()
-        async with session.post(
+        response = await self._request_with_retry(
+            "POST",
             f"{self.base_url}/rest/api/3/issue",
-            json=data
-        ) as response:
-            if response.status == 201:
-                result = await response.json()
-                return result["key"]
-            else:
-                error_data = await response.text()
-                raise JiraError(f"Failed to create issue: {error_data}")
+            json=data,
+        )
+        if response.status == 201:
+            result = await response.json()
+            return result["key"]
+        else:
+            error_data = await response.text()
+            raise JiraError(f"Failed to create issue: {error_data}")
 
     async def get_sprint(self, sprint_id: int) -> Sprint:
         """Get sprint details by ID."""
-        session = await self.get_session()
-        async with session.get(
-            f"{self.base_url}/rest/agile/1.0/sprint/{sprint_id}"
-        ) as response:
-            if response.status == 200:
-                data = await response.json()
-                return self._convert_to_sprint(data)
-            else:
-                error_data = await response.text()
-                raise JiraError(f"Failed to get sprint: {error_data}")
+        response = await self._request_with_retry(
+            "GET",
+            f"{self.base_url}/rest/agile/1.0/sprint/{sprint_id}",
+        )
+        if response.status == 200:
+            data = await response.json()
+            return self._convert_to_sprint(data)
+        else:
+            error_data = await response.text()
+            raise JiraError(f"Failed to get sprint: {error_data}")
 
     async def get_active_sprint(self, board_id: Optional[int] = None) -> Optional[Sprint]:
         """Get the currently active sprint."""
@@ -115,25 +173,38 @@ class JiraClient:
         if not target_board:
             # If no board provided and no default, we can't find sprint
             return None
-            
+
         sprints = await self._get_board_sprints(
-            target_board, 
+            target_board,
             state=SprintStatus.ACTIVE
         )
         return sprints[0] if sprints else None
 
-    async def get_sprint_issues(self, sprint_id: int) -> List[Issue]:
-        """Get all issues in a sprint."""
-        session = await self.get_session()
-        async with session.get(
-            f"{self.base_url}/rest/agile/1.0/sprint/{sprint_id}/issue"
-        ) as response:
+    async def get_sprint_issues(self, sprint_id: int, max_results: int = 200) -> List[Issue]:
+        """Get all issues in a sprint with pagination."""
+        all_issues: List[Issue] = []
+        start_at = 0
+
+        while True:
+            response = await self._request_with_retry(
+                "GET",
+                f"{self.base_url}/rest/agile/1.0/sprint/{sprint_id}/issue",
+                params={"startAt": start_at, "maxResults": min(max_results - len(all_issues), 50)},
+            )
             if response.status == 200:
                 data = await response.json()
-                return [self._convert_to_issue(i) for i in data["issues"]]
+                issues = [self._convert_to_issue(i) for i in data["issues"]]
+                all_issues.extend(issues)
+
+                # Check if there are more pages
+                if len(all_issues) >= data.get("total", 0) or len(all_issues) >= max_results:
+                    break
+                start_at = len(all_issues)
             else:
                 error_data = await response.text()
                 raise JiraError(f"Failed to get sprint issues: {error_data}")
+
+        return all_issues
 
     async def get_backlog_issues(self, project_key: Optional[str] = None) -> List[Issue]:
         """Get all backlog issues."""
@@ -147,41 +218,57 @@ class JiraClient:
         return await self.search_issues(jql)
 
     async def search_issues(self, jql: str, max_results: int = 100) -> List[Issue]:
-        """Search issues using JQL (API v3)."""
-        session = await self.get_session()
-        async with session.post(
-            f"{self.base_url}/rest/api/3/search/jql",
-            json={
-                "jql": jql,
-                "maxResults": max_results,
-                "fields": [
-                    "summary", "description", "issuetype", "priority",
-                    "status", "assignee", "labels", "components",
-                    "created", "updated", self.story_points_field
-                ]
-            }
-        ) as response:
+        """Search issues using JQL (API v3) with pagination."""
+        all_issues: List[Issue] = []
+        start_at = 0
+
+        while True:
+            response = await self._request_with_retry(
+                "POST",
+                f"{self.base_url}/rest/api/3/search",
+                json={
+                    "jql": jql,
+                    "startAt": start_at,
+                    "maxResults": min(max_results - len(all_issues), 50),
+                    "fields": [
+                        "summary", "description", "issuetype", "priority",
+                        "status", "assignee", "labels", "components",
+                        "created", "updated", self.story_points_field
+                    ]
+                },
+            )
             if response.status == 200:
                 data = await response.json()
-                return [self._convert_to_issue(i) for i in data["issues"]]
+                issues = [self._convert_to_issue(i) for i in data["issues"]]
+                all_issues.extend(issues)
+
+                # Check if there are more pages
+                if len(all_issues) >= data.get("total", 0) or len(all_issues) >= max_results:
+                    break
+                start_at = len(all_issues)
             else:
                 error_data = await response.text()
                 raise JiraError(f"Failed to search issues: {error_data}")
 
+        return all_issues
+
     async def get_issue_history(self, issue_key: str) -> List[Dict[str, Any]]:
         """Get the change history of an issue."""
-        session = await self.get_session()
-        async with session.get(
-            f"{self.base_url}/rest/api/3/issue/{issue_key}/changelog"
-        ) as response:
-            if response.status == 200:
-                data = await response.json()
-                return self._process_changelog(data["values"])
-            else:
-                error_data = await response.text()
-                raise JiraError(f"Failed to get issue history: {error_data}")
+        response = await self._request_with_retry(
+            "GET",
+            f"{self.base_url}/rest/api/3/issue/{issue_key}/changelog",
+        )
+        if response.status == 200:
+            data = await response.json()
+            return self._process_changelog(data["values"])
+        else:
+            error_data = await response.text()
+            raise JiraError(f"Failed to get issue history: {error_data}")
 
-    # Helper methods
+    # ------------------------------------------------------------------ #
+    #  Private helpers
+    # ------------------------------------------------------------------ #
+
     def _get_headers(self) -> Dict[str, str]:
         """Get headers for Jira API requests."""
         return {
@@ -313,6 +400,17 @@ class JiraClient:
         auth_string = f"{username}:{api_token}"
         return b64encode(auth_string.encode()).decode()
 
+    def _parse_datetime(self, date_str: Optional[str]) -> Optional[datetime]:
+        """Parse a Jira datetime string into a timezone-aware datetime."""
+        if not date_str:
+            return None
+        # Jira returns ISO 8601 with timezone info or trailing Z
+        cleaned = date_str.rstrip('Z')
+        dt = datetime.fromisoformat(cleaned)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+
     def _convert_to_issue(self, data: Dict[str, Any]) -> Issue:
         """Convert Jira API response to Issue object."""
         fields = data.get("fields", {})
@@ -333,19 +431,14 @@ class JiraClient:
         except ValueError:
             priority = Priority.MEDIUM
 
-        # Handle status - try to get name, fallback to "To Do"
+        # Handle status — use flexible from_name to support custom statuses
         status_data = fields.get("status", {})
         status_name = status_data.get("name", "To Do") if status_data else "To Do"
-        try:
-            status = IssueStatus(status_name)
-        except ValueError:
-            status = IssueStatus.TODO
+        status = IssueStatus.from_name(status_name)
 
-        # Handle dates
-        created_str = fields.get("created")
-        updated_str = fields.get("updated")
-        created_at = datetime.fromisoformat(created_str.rstrip('Z')) if created_str else datetime.now()
-        updated_at = datetime.fromisoformat(updated_str.rstrip('Z')) if updated_str else datetime.now()
+        # Handle dates — timezone-aware
+        created_at = self._parse_datetime(fields.get("created")) or datetime.now(timezone.utc)
+        updated_at = self._parse_datetime(fields.get("updated")) or datetime.now(timezone.utc)
 
         # Convert ADF description to plain text
         description = fields.get("description")
@@ -359,6 +452,7 @@ class JiraClient:
             issue_type=issue_type,
             priority=priority,
             status=status,
+            status_name=status_name,
             assignee=self._convert_to_team_member(fields.get("assignee")) if fields.get("assignee") else None,
             story_points=fields.get(self.story_points_field),
             labels=fields.get("labels", []),
@@ -371,13 +465,21 @@ class JiraClient:
 
     def _convert_to_sprint(self, data: Dict[str, Any]) -> Sprint:
         """Convert Jira API response to Sprint object."""
+        # Normalize the state value for our enum (Jira uses lowercase)
+        raw_state = data.get("state", "future")
+        try:
+            status = SprintStatus(raw_state.lower())
+        except ValueError:
+            logger.warning("Unknown sprint state '%s', defaulting to 'future'", raw_state)
+            status = SprintStatus.FUTURE
+
         return Sprint(
             id=data["id"],
             name=data["name"],
             goal=data.get("goal"),
-            status=SprintStatus(data["state"]),
-            start_date=datetime.fromisoformat(data["startDate"].rstrip('Z')) if data.get("startDate") else None,
-            end_date=datetime.fromisoformat(data["endDate"].rstrip('Z')) if data.get("endDate") else None
+            status=status,
+            start_date=self._parse_datetime(data.get("startDate")),
+            end_date=self._parse_datetime(data.get("endDate")),
         )
 
     def _convert_to_team_member(self, data: Dict[str, Any]) -> TeamMember:
@@ -393,31 +495,31 @@ class JiraClient:
         """Process issue changelog into a more usable format."""
         history = []
         for entry in changelog:
-            for item in entry["items"]:
+            for item in entry.get("items", []):
                 if item["field"] == "status":
                     history.append({
                         "from_status": item["fromString"],
                         "to_status": item["toString"],
-                        "from_date": datetime.fromisoformat(entry["created"].rstrip('Z')),
+                        "from_date": self._parse_datetime(entry["created"]),
                         "author": entry["author"]["displayName"]
                     })
         return history
 
     async def _get_board_sprints(
-        self, 
-        board_id: int, 
+        self,
+        board_id: int,
         state: Optional[SprintStatus] = None
     ) -> List[Sprint]:
         """Get all sprints for a board."""
         params = {"state": state.value} if state else {}
-        session = await self.get_session()
-        async with session.get(
+        response = await self._request_with_retry(
+            "GET",
             f"{self.base_url}/rest/agile/1.0/board/{board_id}/sprint",
-            params=params
-        ) as response:
-            if response.status == 200:
-                data = await response.json()
-                return [self._convert_to_sprint(s) for s in data["values"]]
-            else:
-                error_data = await response.text()
-                raise JiraError(f"Failed to get board sprints: {error_data}")
+            params=params,
+        )
+        if response.status == 200:
+            data = await response.json()
+            return [self._convert_to_sprint(s) for s in data["values"]]
+        else:
+            error_data = await response.text()
+            raise JiraError(f"Failed to get board sprints: {error_data}")

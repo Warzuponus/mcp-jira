@@ -2,7 +2,10 @@
 name = "mcp-jira"
 version = "0.1.0"
 description = "Model Context Protocol server for Jira with Scrum Master capabilities"
+readme = "README.md"
+license = {text = "MIT"}
 authors = [{name = "Warzuponus"}]
+requires-python = ">=3.8"
 dependencies = [
     "mcp>=1.0.0",
     "jira>=3.5.1",
@@ -11,6 +14,21 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "aiohttp>=3.8.0"
 ]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+mcp-jira = "mcp_jira.simple_mcp_server:main"
 
 [project.optional-dependencies]
 dev = [
@@ -24,3 +42,4 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
