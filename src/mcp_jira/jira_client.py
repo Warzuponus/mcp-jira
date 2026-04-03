@@ -218,34 +218,37 @@ class JiraClient:
         return await self.search_issues(jql)
 
     async def search_issues(self, jql: str, max_results: int = 100) -> List[Issue]:
-        """Search issues using JQL (API v3) with pagination."""
+        """Search issues using JQL with cursor-based pagination (search/jql API)."""
         all_issues: List[Issue] = []
-        start_at = 0
+        next_page_token: Optional[str] = None
 
         while True:
+            body: Dict[str, Any] = {
+                "jql": jql,
+                "maxResults": min(max_results - len(all_issues), 50),
+                "fields": [
+                    "summary", "description", "issuetype", "priority",
+                    "status", "assignee", "labels", "components",
+                    "created", "updated", self.story_points_field
+                ]
+            }
+            if next_page_token:
+                body["nextPageToken"] = next_page_token
+
             response = await self._request_with_retry(
                 "POST",
-                f"{self.base_url}/rest/api/3/search",
-                json={
-                    "jql": jql,
-                    "startAt": start_at,
-                    "maxResults": min(max_results - len(all_issues), 50),
-                    "fields": [
-                        "summary", "description", "issuetype", "priority",
-                        "status", "assignee", "labels", "components",
-                        "created", "updated", self.story_points_field
-                    ]
-                },
+                f"{self.base_url}/rest/api/3/search/jql",
+                json=body,
             )
             if response.status == 200:
                 data = await response.json()
                 issues = [self._convert_to_issue(i) for i in data["issues"]]
                 all_issues.extend(issues)
 
-                # Check if there are more pages
-                if len(all_issues) >= data.get("total", 0) or len(all_issues) >= max_results:
+                # Cursor-based pagination: stop when nextPageToken is absent or limit reached
+                next_page_token = data.get("nextPageToken")
+                if not next_page_token or len(all_issues) >= max_results:
                     break
-                start_at = len(all_issues)
             else:
                 error_data = await response.text()
                 raise JiraError(f"Failed to search issues: {error_data}")

@@ -115,7 +115,6 @@ async def test_issue_status_custom(mock_jira_client, mock_response):
     """Test that custom/unknown Jira statuses are handled gracefully"""
     async def custom_status_request(method, url, **kwargs):
         return mock_response(200, {
-            "total": 1,
             "issues": [{
                 "key": "TEST-99",
                 "fields": {

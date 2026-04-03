@@ -169,10 +169,9 @@ def mock_jira_client(test_settings, mock_response):
             # Mock issue creation
             if "issue" in url_str and "search" not in url_str:
                 return mock_response(201, {"key": "TEST-1"})
-            # Mock search
+            # Mock search (search/jql uses cursor pagination — no total field)
             else:
                 return mock_response(200, {
-                    "total": 1,
                     "issues": [{
                         "key": "TEST-1",
                         "fields": {
