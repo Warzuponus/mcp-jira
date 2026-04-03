@@ -8,6 +8,10 @@ from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
 from typing import Optional
 import os
+from pathlib import Path
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_ENV_FILE = _PROJECT_ROOT / ".env"
 
 class Settings(BaseSettings):
     """
@@ -36,7 +40,7 @@ class Settings(BaseSettings):
     max_concurrent_requests: int = 10
     
     model_config = ConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",

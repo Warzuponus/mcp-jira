@@ -17,7 +17,7 @@ def check_env_file():
     current_dir = Path(os.getcwd())
     potential_paths = [
         current_dir / ".env",
-        Path(__file__).parent.parent.parent / ".env"
+        Path(__file__).resolve().parents[2] / ".env"
     ]
 
     env_path = None

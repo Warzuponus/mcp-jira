@@ -11,6 +11,7 @@ Get your MCP Jira server running in 5 minutes!
 ## Step 1: Install
 
 ```bash
+git clone https://github.com/your-org/mcp-jira.git
 cd mcp-jira
 python3 -m venv .venv
 source .venv/bin/activate
@@ -47,26 +48,38 @@ PROJECT_KEY=PROJ
 ## Step 4: Test the Server
 
 ```bash
-python -m mcp_jira
+.venv/bin/python -m mcp_jira
 ```
 
-You should see: `Starting MCP Jira Server...`
+You should see `Initializing MCP Jira server...` in the output. Press `Ctrl+C` to stop.
 
 ## Step 5: Connect to Claude Desktop
 
-Add to your `claude_desktop_config.json`:
+The Claude Desktop config file is at:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+First, get the absolute path to your venv Python:
+```bash
+echo "$(pwd)/.venv/bin/python"
+```
+
+Then add this to your `claude_desktop_config.json`, substituting your actual path:
 
 ```json
 {
   "mcpServers": {
     "mcp-jira": {
-      "command": "/path/to/mcp-jira/.venv/bin/python",
-      "args": ["-m", "mcp_jira"],
-      "cwd": "/path/to/mcp-jira"
+      "command": "/absolute/path/to/mcp-jira/.venv/bin/python",
+      "args": ["-m", "mcp_jira"]
     }
   }
 }
 ```
+
+> **Important**: Use the venv Python binary (`/path/to/mcp-jira/.venv/bin/python`), not your system Python. The `cwd` field is not needed — the server locates its `.env` file automatically.
+
+Restart Claude Desktop after saving.
 
 ## Step 6: Try It Out!
 

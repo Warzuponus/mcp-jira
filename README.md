@@ -35,13 +35,14 @@ A simple Model Context Protocol (MCP) server for Jira that allows LLMs to act as
 
 1. **Clone and install**:
 ```bash
+git clone https://github.com/your-org/mcp-jira.git
 cd mcp-jira
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 ```
 
-2. **Configure Jira credentials** in `.env`:
+2. **Configure Jira credentials**:
 ```bash
 cp .env.example .env
 # Edit .env with your values
@@ -55,10 +56,11 @@ PROJECT_KEY=PROJ
 DEFAULT_BOARD_ID=123
 ```
 
-3. **Run the MCP server**:
+3. **Test the server**:
 ```bash
-python -m mcp_jira
+.venv/bin/python -m mcp_jira
 ```
+You should see `Initializing MCP Jira server...` in the output. Press `Ctrl+C` to stop.
 
 ## Usage Examples
 
@@ -81,18 +83,32 @@ python -m mcp_jira
 ## MCP Integration
 
 ### With Claude Desktop
-Add to your `claude_desktop_config.json`:
+
+The config file is located at:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+Add the following entry, replacing `/path/to/mcp-jira` with the absolute path where you cloned the repo:
+
 ```json
 {
   "mcpServers": {
     "mcp-jira": {
       "command": "/path/to/mcp-jira/.venv/bin/python",
-      "args": ["-m", "mcp_jira"],
-      "cwd": "/path/to/mcp-jira"
+      "args": ["-m", "mcp_jira"]
     }
   }
 }
 ```
+
+> **Note**: Use the Python binary from inside the `.venv` folder — this ensures all dependencies are available. The `cwd` field is not required; the server resolves its configuration using absolute paths internally.
+
+To find the correct path, run this from inside the project directory:
+```bash
+echo "$(pwd)/.venv/bin/python"
+```
+
+Restart Claude Desktop after saving the config.
 
 ### With Other MCP Clients
 The server follows the standard MCP protocol and works with any MCP-compatible client.
